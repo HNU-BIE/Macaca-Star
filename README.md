@@ -1,4 +1,3 @@
-[图片313.tif](https://github.com/user-attachments/files/31519100/313.tif)
 # Macaca-Star: A Deep Learning-Assisted Pipeline for mesoscale connectivity mapping in the macaque brain
 
 # Contents

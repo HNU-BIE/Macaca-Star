@@ -94,7 +94,11 @@ For model training, a high-memory NVIDIA GPU is recommended. Our development and
 
 # Installation
 
-Installation instructions will be provided here.
+git clone https://github.com/HNU-BIE/Macaca-Star.git
+
+pip install -r requirements.txt
+or
+conda env create -f enviroment.yml
 
 
 # Getting Started

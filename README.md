@@ -1,72 +1,115 @@
 # Macaca-Star: A Deep Learning-Assisted Pipeline for mesoscale connectivity mapping in the macaque brain
 
 # Contents
-&#x2022; [Overview](#Overview)  
-&#x2022; [Macaca-Star pipeline](#Macaca-Star-pipeline)  
-&#x2022; [3D modality tansfer](#3D-modality-tansfer)  
-&#x2022; [System requirements](#System-requirements)   
-&#x2022; [Installation](#Installation)  
-&#x2022; [Getting Started](#Getting-Started)  
-&#x2022; [License](#License)  
+
+- [Overview](#overview)
+- [Macaca-Star Pipeline](#macaca-star-pipeline)
+- [Cross-modal Translation with CycWave-Mamba](#cross-modal-translation-with-cycwave-mamba)
+- [System Requirements](#system-requirements)
+- [Installation](#installation)
+- [Getting Started](#getting-started)
+- [License](#license)
+
 
 # Overview
-**Macaca-Star** is an open-source software project developed entirely in Python, focusing on the registration of macaque brain images. It simplifies the installation process and lowers the barrier to entry. The primary goal is to enable accurate alignment of macaque brain images across different modalities, facilitating the study of neuroanatomy and brain structure. The project includes a comprehensive set of preprocessing methods for handling and analyzing brain imaging data and supports multiple data types, such as **fMOST PI images**, **blockface-based fluorescence sections**, and **MRI scans**. By integrating deep learning models with traditional image processing techniques, the project addresses various challenges, including the removal of imaging artifacts, alignment of anatomical regions, and the integration of multi-modal data for accurate cross-modality registration.
 
-The [example](./example) folder in this project contains the test data.
+**Macaca-Star** is an open-source, automated, and modular framework for multimodal whole-brain mapping in macaques. It is designed to integrate large-scale optical imaging data with subject-specific in vivo MRI and standard macaque brain atlases within a common anatomical space.
 
-<p align="center">
-<img src="https://github.com/user-attachments/assets/e850250e-9390-4c54-a3d7-99e8f61e1812" width="800">
+Macaca-Star supports multiple imaging streams, including **fMOST PI/GFP data**, **serial fluorescence sections**, **block-face images**, and **MRI data**. The framework combines modality-specific image preprocessing, 2D-to-3D reconstruction, deep learning-based cross-modal translation, and nonlinear registration to address substantial tissue deformation, cross-modal appearance discrepancies, and inter-individual anatomical variability.
 
-# 3D modality tansfer
+A key component of Macaca-Star is **CycWave-Mamba**, a deep learning model for cross-modal image translation in both 2D and 3D. In the section-based pipeline, 2D fluorescence images are translated into block-face-like representations to facilitate correspondence with their associated block-face images and subsequent 3D reconstruction. In the volumetric pipeline, reconstructed block-face and fMOST PI volumes are translated into synthetic T1-weighted MRI-like volumes for registration with MRI-based reference spaces.
 
-We provide a robust 3D modality transfer method for 3D fMOST PI and Blockface images, and the [checkpoints](./checkpoints) has already been uploaded to the project. . This method does not require re-training during usage.
+Macaca-Star supports both direct registration to the **NIMH Macaque Template (NMT)** and registration guided by **subject-specific in vivo MRI**. The resulting spatial transformations can be applied to map axonal projections, soma locations, and other extracted biological features into the standard atlas space for cross-subject integration and atlas-based analysis.
 
-<p align="center">
-<img src="https://github.com/user-attachments/assets/6b105954-14e3-4061-953d-311b27d08b62" width="800">
+The [`example`](https://github.com/HNU-BIE/Macaca-Star/tree/main/example) folder contains example data for testing the pipeline.
 
-# System requirements
-The software has been successfully installed and tested on Windows, Ubuntu 20.04, and Ubuntu 22.04 systems, ensuring excellent compatibility and stability.  
 
-To ensure smooth operation of the program, a minimum of 32GB of RAM is required. This software includes deep learning models, so it is necessary to have the required environments, such as CUDA, installed for deep learning tasks. If you wish to retrain the 3D CycleGAN model, a high-performance GPU such as the A6000 (48GB) or better is recommended. We also provide pretrained results, which can be found in the "[checkpoints](./checkpoints)" folder.
+# Macaca-Star Pipeline
 
-Minimum 32GB RAM required for optimal performance
+Macaca-Star provides an integrated processing and mapping framework for different types of macaque brain imaging data.
 
-For model training (3D CycleGAN):
-Recommended: NVIDIA RTX A6000 (48GB) or better
+### 1. Optical image processing
+
+Acquired optical images undergo modality-specific preprocessing and 3D reconstruction. The pipeline generates reconstructed **block-face** and **fMOST PI** volumes that preserve anatomical information for subsequent cross-modal registration.
+
+Tracer-related imaging channels are processed separately:
+
+- **fMOST GFP data** are processed for axon tracing.
+- **2D fluorescence sections** are processed for soma localization.
+
+### 2. Cross-modal translation
+
+Macaca-Star uses **CycWave-Mamba** to reduce the appearance gap between optical imaging and anatomical reference images.
+
+Two cross-modal translation settings are supported:
+
+- **2D translation:** fluorescence sections → block-face-like images
+- **3D translation:** reconstructed block-face or fMOST PI volumes → synthetic T1w MRI-like volumes
+
+### 3. Spatial registration
+
+Synthetic T1w MRI-like volumes can be registered to the standard NMT space through two pathways:
+
+- **MRI-guided registration:** subject-specific in vivo MRI serves as a global anatomical reference between ex vivo optical data and the standard atlas.
+- **MRI-free registration:** synthetic T1w MRI-like volumes are registered directly to the NMT template when subject-specific in vivo MRI is unavailable.
+
+### 4. Mapping and atlas-based analysis
+
+The resulting spatial transformations can be applied to map extracted biological information, including:
+
+- Axonal projections
+- Soma locations
+- Other extracted biological features
+
+into the standard NMT space, enabling multimodal integration, cross-subject comparison, and atlas-based analysis.
+
+
+# Cross-modal Translation with CycWave-Mamba
+
+**CycWave-Mamba** is the cross-modal translation module incorporated into Macaca-Star. It supports both 2D and 3D image translation for different imaging scenarios.
+
+For **2D fluorescence sections**, CycWave-Mamba generates block-face-like images that facilitate registration with corresponding block-face images and support subsequent 3D reconstruction.
+
+For **3D optical data**, CycWave-Mamba translates reconstructed fMOST PI and block-face volumes into synthetic T1w MRI-like volumes. These synthetic volumes provide an MRI-compatible anatomical representation for subsequent registration to subject-specific in vivo MRI or directly to the NMT template.
+
+Pretrained model checkpoints are provided in the [`checkpoints`](https://github.com/HNU-BIE/Macaca-Star/tree/main/checkpoints) folder and can be used directly for inference without additional retraining.
+
+
+# System Requirements
+
+Macaca-Star has been installed and tested on:
+
+- Windows
+- Ubuntu 20.04
+- Ubuntu 22.04
+
+A minimum of **32 GB RAM** is recommended for general processing. Memory requirements may increase substantially when processing large whole-brain optical datasets.
+
+GPU acceleration and a compatible CUDA environment are required for deep learning-based cross-modal translation.
+
+For inference, pretrained CycWave-Mamba checkpoints are provided in the [`checkpoints`](https://github.com/HNU-BIE/Macaca-Star/tree/main/checkpoints) folder.
+
+For model training, a high-memory NVIDIA GPU is recommended. Our development and training environment used GPUs with memory capacity comparable to an **NVIDIA RTX A6000 (48 GB)** or higher.
+
 
 # Installation
-```Bash
-git clone https://github.com/HNU-BIE/Macaca-Star.git
 
-pip install -r requirements.txt
-or
-conda env create -f enviroment.yml
-```
+Installation instructions will be provided here.
+
+
 # Getting Started
-### Download Checkpoints
-Download the model [checkpoints](./checkpoints). All model checkpoints are saved in the "checkpoints" folder within the program directory.
 
-### Whole-brain registration of the fMOST PI modality
-Before running [fMOST_PI.py](./fMOST_PI.py) for registration, make sure to configure the necessary variables in the [fMOST_PI_config.yaml](./config/fMOST_PI_config.yaml) file.
+Example scripts and test data are available in the [`example`](https://github.com/HNU-BIE/Macaca-Star/tree/main/example) folder.
 
-If you opt for the MRI-guided approach, please also configure the [MRI_config.yaml](./config/MRI_config.yaml) file accordingly.
+The main processing stages include:
 
-### Whole-brain registration of fluorescent sections
-Before running [fluor_sections.py](./fluor_sections.py) for registration, make sure to configure the necessary variables in the [fluor_sections_config.yaml](./config/fluor_sections_config.yaml) and [blockface_config.yaml](./config/blockface_config.yaml)files.
-
-If you opt for the MRI-guided approach, please also configure the [MRI_config.yaml](./config/MRI_config.yaml) file accordingly.
-
-**All atlas results generated through Macaca-Star registration are saved in the atlas folder.**
-
-### Visualize the registration results in real-time using visdom:
-```Bash
-python -m visdom.server
-or
-visdom
-```
-![截图 2025-04-07 17-09-12](https://github.com/user-attachments/assets/24b11ddc-a5aa-49fd-b25d-9181fb79e910)
+1. Optical image preprocessing and reconstruction
+2. 2D or 3D cross-modal translation using CycWave-Mamba
+3. MRI-guided or MRI-free registration
+4. Mapping of extracted biological features to the NMT space
+5. Atlas-based analysis
 
 
 # License
-This work is licensed under a [Creative Commons Attribution 4.0 International License](http://creativecommons.org/licenses/by/4.0/).
 
+License information will be provided here.

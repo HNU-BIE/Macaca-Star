@@ -1,4 +1,4 @@
-# Macaca-Star: Fully Automated and Scalable Pipeline for Macaque Brain Registration
+# Macaca-Star: A Deep Learning-Assisted Pipeline for mesoscale connectivity mapping in the macaque brain
 
 # Contents
 &#x2022; [Overview](#Overview)  

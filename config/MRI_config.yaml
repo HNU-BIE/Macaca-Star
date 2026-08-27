@@ -1,5 +1,10 @@
 MRI-guided: True
-MRI_file: 'example/fMOST_PI/t1_gre3d_cor_anatomy_0.5mm.nii.gz'
-MRI_oc_bymetrix: True
-metrix: [[0,0,1],[-1,0,0],[0,-1,0]]
+#MRI_file: '/media/zzb/Raid2_block2/macaque/PI/194787/MRI/MRI_brain_bc_dn.nii.gz'
+MRI_file: '/media/zzb/Raid2_block2/macaque/PI/252786_y/MRI/MRI_brain_bc_dn_.nii.gz'
+MRI_oc: True
+MRI_transpose: [2,0,1]
+MRI_flip: [0,0,1]
+#MRI_oc_bymetrix: True
+#metrix: [[0,0,1],[-1,0,0],[0,-1,0]]
+rm_background: 231
 rm_neck: 90

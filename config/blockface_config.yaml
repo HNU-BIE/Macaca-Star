@@ -1,1 +1,2 @@
-subject_dir: 'example/fluor_sections/blockface.nii.gz'
+#subject_dir: 'example/fluor_sections/blockface.nii.gz'
+subject_dir: '/media/zzb/Raid2_block2/macaque/Blockface/C060/blockface/b_recon_oc_scale_rmc_repair.nii.gz'

@@ -1,9 +1,12 @@
-subject_dir: 'example/fMOST_PI/fMOST_PI.tif'
-output_dir: 'example/fMOST_PI'
-wholeBrain: False
+#subject_dir: 'example/fMOST_PI/fMOST_PI.tif'
+subject_dir: '/media/zzb/Raid2_block2/macaque/PI/252718/252718.nii.gz'
+output_dir: '/media/zzb/Raid2_block2/macaque/PI/252718/'
+#output_dir: 'example/fMOST_PI/'
+wholeBrain: True
 LR: R
 spacing: [0.05,0.05,0.05]
-intensity_correction: True
+intensity_correction: False
 clahe: True
+atlas_repair_bySeg: True
 
 

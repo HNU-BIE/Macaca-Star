@@ -1,5 +1,9 @@
-subject_dir: "example/fluor_sections/fluor.nii.gz"
-output_dir: 'example/fluor_sections'
-max_dis_centers: 45  # The maximum distance between the center points of corresponding tissues in fluorescence and blockface imaging.
-ex_min_blikef_area: 100 # The minimum tissue area removed in fluorescent sections.
-ex_min_b_area: 300 # The minimum tissue area removed in blockface sections.
+subject_dir: "/media/zzb/Raid2_block2/macaque/Blockface/C060/reg3D/b_recon_oc_scale_alignMRI.nii.gz"
+#output_dir: 'example/fluor_sections'
+output_dir: '/media/zzb/Raid2_block2/macaque/Blockface/C075/'
+wholeBrain: True
+LR: R
+max_dis_centers: 100  # The maximum distance between the center points of corresponding tissues in fluorescence and blockface imaging.
+ex_min_blikef_area: 30 # The minimum tissue area removed in fluorescent sections.
+ex_min_b_area: 30 # The minimum tissue area removed in blockface sections.
+atlas_repair_bySeg: True

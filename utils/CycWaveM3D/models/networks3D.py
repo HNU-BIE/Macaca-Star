@@ -3,18 +3,11 @@ import torch.nn as nn
 from torch.nn import init
 import functools
 from torch.optim import lr_scheduler
-import monai
 from mamba_ssm import Mamba
 from utils.CycWaveM3D.models import wavelet
 from torch.nn.utils import spectral_norm
 import torch.nn.functional as F
 from utils.CycWaveM3D.models.wavelet import WTConv3d_D
-
-
-###############################################################################
-# Helper Functions
-###############################################################################
-
 
 def get_norm_layer(norm_type='instance'):
     if norm_type == 'batch':
@@ -26,7 +19,6 @@ def get_norm_layer(norm_type='instance'):
     else:
         raise NotImplementedError('normalization layer [%s] is not found' % norm_type)
     return norm_layer
-
 
 def get_scheduler(optimizer, opt):
     if opt.lr_policy == 'lambda':
@@ -43,7 +35,6 @@ def get_scheduler(optimizer, opt):
     else:
         return NotImplementedError('learning rate policy [%s] is not implemented', opt.lr_policy)
     return scheduler
-
 
 def init_weights(net, init_type='normal', gain=0.02):
     def init_func(m):
@@ -77,12 +68,10 @@ def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[]):
     init_weights(net, init_type, gain=init_gain)
     return net
 
-
-def define_G(input_nc, output_nc, ngf, norm='batch', use_dropout=False, init_type='normal', init_gain=0.02, gpu_ids=[],blocks=[3,2,3],ismerge=False):
+def define_G(input_nc, output_nc, ngf, norm='batch', use_dropout=False, init_type='normal', init_gain=0.02, gpu_ids=[], blocks=[3,2,3],ismerge=False):
     norm_layer = get_norm_layer(norm_type=norm)
     net = WTResnetGenerator3D_HybridMamba(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout,blocks=blocks,ismerge=ismerge)
     return init_net(net, init_type, init_gain, gpu_ids)
-
 
 def define_D(input_nc, ndf,n_layers=3, norm='batch', use_sigmoid=False, init_type='normal', init_gain=0.02, gpu_ids=[]):
     norm_layer = get_norm_layer(norm_type=norm)
@@ -122,23 +111,6 @@ class GANLoss(nn.Module):
     def __call__(self, input, target_is_real):
         target_tensor = self.get_target_tensor(input, target_is_real)
         return self.loss(input, target_tensor)
-
-
-'''
-define the correlation coefficient loss
-'''
-def Cor_CoeLoss(y_pred, y_target):
-    x = y_pred
-    y = y_target
-    x_var = x - torch.mean(x)
-    y_var = y - torch.mean(y)
-    r_num = torch.sum(x_var * y_var)
-    r_den = torch.sqrt(torch.sum(x_var ** 2)) * torch.sqrt(torch.sum(y_var ** 2))
-    r = r_num / r_den
-
-    # return 1 - r  # best are 0
-    return 1 - r**2 # abslute constrain
-
 
 class WTResnetGenerator3D_HybridMamba(nn.Module):
     def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm3d,

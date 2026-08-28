@@ -38,7 +38,6 @@ class CycleGANModel(BaseModel):
     def name(self):
         return 'CycleGANModel'
 
-
     def initialize(self, opt):
         BaseModel.initialize(self, opt)
 
@@ -60,9 +59,9 @@ class CycleGANModel(BaseModel):
 
         # load/define networks
         self.netG_A = networks3D.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.norm,   # nc number channels
-                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids,blocks=[3,2,3],ismerge=False)
+                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, blocks=[3,2,3],ismerge=False)
         self.netG_B = networks3D.define_G(opt.output_nc, opt.input_nc, opt.ngf, opt.netG, opt.norm,
-                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids,blocks=[4,0,4],ismerge=False)
+                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, blocks=[4,0,4],ismerge=False)
 
         if self.isTrain:
             use_sigmoid = opt.no_lsgan

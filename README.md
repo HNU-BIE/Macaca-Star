@@ -66,7 +66,7 @@ The resulting spatial transformations can be applied to map extracted biological
 
 into the standard NMT space, enabling multimodal integration, cross-subject comparison, and atlas-based analysis.
 
-# 📚 System Requirements
+# ⚙️ System Requirements
 
 Macaca-Star has been installed and tested on:
 

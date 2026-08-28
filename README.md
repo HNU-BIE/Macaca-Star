@@ -66,18 +66,6 @@ The resulting spatial transformations can be applied to map extracted biological
 
 into the standard NMT space, enabling multimodal integration, cross-subject comparison, and atlas-based analysis.
 
-
-# Cross-modal Translation with CycWave-Mamba
-
-**CycWave-Mamba** is the cross-modal translation module incorporated into Macaca-Star. It supports both 2D and 3D image translation for different imaging scenarios.
-
-For **2D fluorescence sections**, CycWave-Mamba generates block-face-like images that facilitate registration with corresponding block-face images and support subsequent 3D reconstruction.
-
-For **3D optical data**, CycWave-Mamba translates reconstructed fMOST PI and block-face volumes into synthetic T1w MRI-like volumes. These synthetic volumes provide an MRI-compatible anatomical representation for subsequent registration to subject-specific in vivo MRI or directly to the NMT template.
-
-Pretrained model checkpoints are provided in the [`checkpoints`](https://github.com/HNU-BIE/Macaca-Star/tree/main/checkpoints) folder and can be used directly for inference without additional retraining.
-
-
 # System Requirements
 
 Macaca-Star has been installed and tested on:

@@ -61,6 +61,7 @@ train:
   lambda_identity: 0.5                 # Weight for identity mapping loss
   lambda_co_A: 2.0                      # Weight for correlation coefficient loss (A -> B)
   lambda_co_B: 2.0                      # Weight for correlation coefficient loss (B -> A)
+  lambda_freq: 2.0
 
   # Logging & Checkpoint Frequencies
   print_freq: 100                       # Frequency of showing training results on console

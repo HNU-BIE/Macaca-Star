@@ -1,4 +1,4 @@
-# Macaca-Star: A Deep Learning-Assisted Pipeline for mesoscale connectivity mapping in the macaque brain
+# ✨ Macaca-Star: A Deep Learning-Assisted Pipeline for mesoscale connectivity mapping in the macaque brain
 
 # Contents
 
@@ -32,7 +32,7 @@ By integrating modality-specific preprocessing, automated 2D-to-3D reconstructio
 
 
 
-# Macaca-Star Pipeline
+# ⭐ Macaca-Star Pipeline
 
 Macaca-Star provides an integrated processing and mapping framework for different types of macaque brain imaging data.
 
@@ -66,7 +66,7 @@ The resulting spatial transformations can be applied to map extracted biological
 
 into the standard NMT space, enabling multimodal integration, cross-subject comparison, and atlas-based analysis.
 
-# System Requirements
+# 📚 System Requirements
 
 Macaca-Star has been installed and tested on:
 
@@ -83,7 +83,7 @@ For inference, pretrained CycWave-Mamba checkpoints are provided in the [`checkp
 For model training, our development environment used two NVIDIA RTX A6000 GPUs (48 GB each).
 
 
-# Installation
+# 🛠️ Installation
 ```
 git clone https://github.com/HNU-BIE/Macaca-Star.git
 
@@ -105,6 +105,6 @@ The main processing stages include:
 5. Atlas-based analysis
 
 
-# License
+# 📜 License
 
 This work is licensed under a Creative Commons Attribution 4.0 International License.

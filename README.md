@@ -92,7 +92,7 @@ or
 conda env create -f enviroment.yml
 ``` 
 
-# Getting Started
+# 🚀 Getting Started
 
 Example scripts and test data are available in the [`example`](https://github.com/HNU-BIE/Macaca-Star/tree/main/example) folder.
 

@@ -94,16 +94,14 @@ conda env create -f enviroment.yml
 
 # 🚀 Getting Started
 
-Example scripts and test data are available in the [`example`](https://github.com/HNU-BIE/Macaca-Star/tree/main/example) folder.
+Macaca-Star uses YAML configuration files to manage dataset paths, preprocessing options, model parameters, and training or inference settings. Before running the pipeline, select the appropriate configuration file and update the paths and parameters according to your dataset and computational environment.
 
-The main processing stages include:
+Configuration
 
-1. Optical image preprocessing and reconstruction
-2. 2D or 3D cross-modal translation using CycWave-Mamba
-3. MRI-guided or MRI-free registration
-4. Mapping of extracted biological features to the NMT space
-5. Atlas-based analysis
+Example configuration files are provided for different processing tasks:
 
+fMOST_PI_config.yaml — configuration for fMOST-PI data preprocessing.
+CycWave-Mamba2D_config.yaml — configuration for 2D cross-modal translation using CycWave-Mamba.
 
 # 📜 License
 

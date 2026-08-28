@@ -105,13 +105,8 @@ Example configuration files are provided for different processing tasks:
 **Running the Pipeline**  
 Execute the corresponding script  
 
-**For 3D fMOST-PI data:**  
-
-python fMOST_PI.py  
-  
-**For 2D fluorescence section data:**  
-
-python fluoresence_sections.py  
+**For 3D fMOST-PI data:**  python fMOST_PI.py  
+**For 2D fluorescence section data:**  python fluoresence_sections.py  
   
 Each script automatically loads its corresponding YAML configuration file and executes the complete processing workflow end-to-end according to the specified settings. Individual processing modules can also be executed independently when needed, providing flexibility for users to run specific steps or customize the overall workflow.
 

@@ -5,7 +5,6 @@ from utils.CycWaveM3D.models import networks3D
 
 class BaseModel():
 
-
     def name(self):
         return 'BaseModel'
 

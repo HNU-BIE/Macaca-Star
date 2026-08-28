@@ -8,6 +8,9 @@ from mamba_ssm import Mamba
 from utils.CycWaveM3D.models import wavelet
 from torch.nn.utils import spectral_norm
 import torch.nn.functional as F
+from utils.CycWaveM3D.models.wavelet import WTConv3d_D
+
+
 ###############################################################################
 # Helper Functions
 ###############################################################################
@@ -75,32 +78,20 @@ def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[]):
     return net
 
 
-def define_Gdefine_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, init_type='normal', init_gain=0.02, gpu_ids=[],blocks=[3,2,3],ismerge=False):
-    net = None
+def define_Gdefine_G(input_nc, output_nc, ngf, norm='batch', use_dropout=False, init_type='normal', init_gain=0.02, gpu_ids=[],blocks=[3,2,3],ismerge=False):
     norm_layer = get_norm_layer(norm_type=norm)
-
-    if netG == 'WTResnetGenerator3D_HybridMamba':
-        net = WTResnetGenerator3D_HybridMamba(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout,blocks=blocks,ismerge=ismerge)
-    else:
-        raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
+    net = WTResnetGenerator3D_HybridMamba(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout,blocks=blocks,ismerge=ismerge)
     return init_net(net, init_type, init_gain, gpu_ids)
 
 
-def define_D(input_nc, ndf, netD,
-             n_layers_D=3, norm='batch', use_sigmoid=False, init_type='normal', init_gain=0.02, gpu_ids=[]):
-    net = None
+def define_D(input_nc, ndf,n_layers=3, norm='batch', use_sigmoid=False, init_type='normal', init_gain=0.02, gpu_ids=[]):
     norm_layer = get_norm_layer(norm_type=norm)
-
-    if netD == 'basic':
-        net = NLayerDiscriminator(input_nc, ndf, n_layers=3, norm_layer=norm_layer, use_sigmoid=use_sigmoid)
-    elif netD == 'n_layers':
-        net = NLayerDiscriminator(input_nc, ndf, n_layers_D, norm_layer=norm_layer, use_sigmoid=use_sigmoid)
-    elif netD == 'pixel':
-        net = PixelDiscriminator(input_nc, ndf, norm_layer=norm_layer, use_sigmoid=use_sigmoid)
-    else:
-        raise NotImplementedError('Discriminator model name [%s] is not recognized' % net)
+    net = WTLayerDiscriminator3D(input_nc, ndf, n_layers=n_layers, norm_layer=norm_layer, use_sigmoid=use_sigmoid)
     return init_net(net, init_type, init_gain, gpu_ids)
 
+def define_WTD(input_nc, ndf, init_type='normal', init_gain=0.02, gpu_ids=[]):
+    net = WaveletTextureDiscriminator(input_nc, ndf)
+    return init_net(net, init_type, init_gain, gpu_ids)
 
 ##############################################################################
 # Classes
@@ -152,9 +143,7 @@ def Cor_CoeLoss(y_pred, y_target):
 class WTResnetGenerator3D_HybridMamba(nn.Module):
     def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm3d,
                  use_dropout=False, padding_type='reflect', wavelet_name='haar',blocks=[4,2,4] ,ismerge=False):
-        """
-        结合了 3D 小波变换与 2-4-2 Hybrid Mamba 瓶颈块的生成器
-        """
+
         super(WTResnetGenerator3D_HybridMamba, self).__init__()
         self.input_nc = input_nc
         self.output_nc = output_nc
@@ -168,12 +157,11 @@ class WTResnetGenerator3D_HybridMamba(nn.Module):
         self.ismerge = ismerge
         print('WTResnetGenerator3D_HybridMamba -> ismerge: ' + str(ismerge))
 
-        # ---------- 头 ----------
+        # ---------- head ----------
         self.pad1 = nn.ReplicationPad3d(3)
         self.conv1 = nn.Conv3d(input_nc, ngf, 7, bias=use_bias, padding=0)
         self.norm1 = norm_layer(ngf)
 
-        # ---------- 下采样 + 小波 ----------
         # level-1 64→128
         self.wt_p1 = WaveletMapper(ngf)
         wt_f2, iwt_f2 = wavelet.create_3d_wavelet_filter(wavelet_name, ngf, ngf, torch.float)
@@ -202,28 +190,24 @@ class WTResnetGenerator3D_HybridMamba(nn.Module):
         self.conv3 = nn.Conv3d(ngf * 2, ngf * 4, 3, stride=2, padding=1, bias=use_bias)
         self.norm3 = norm_layer(ngf * 4)
 
-        # ---------- 🌟 2-4-2 Hybrid Mamba 瓶颈块 ----------
+        # ----------  2-4-2 Hybrid Mamba  ----------
         self.bottleneck_blocks = nn.ModuleList()
 
-        # [前置稳固层]: 2x ResNet 适应 3D 到 1D 展平的过渡
         for _ in range(blocks[0]):
             self.bottleneck_blocks.append(
                 ResnetBlock(ngf * 4, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout,
                             use_bias=use_bias)
             )
 
-        # [宏观全局层]: 4x VisionMambaBlock3D 捕捉超长距离形变拓扑
         for _ in range(blocks[1]):
             self.bottleneck_blocks.append(VisionMambaBlock3D(d_model=ngf * 4))
 
-        # [后置折叠层]: 2x ResNet 将 Mamba 序列重组为坚实的 3D 特征图
         for _ in range(blocks[2]):
             self.bottleneck_blocks.append(
                 ResnetBlock(ngf * 4, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout,
                             use_bias=use_bias)
             )
 
-        # ---------- 上采样 ----------
         self.up1 = nn.ConvTranspose3d(ngf * 4, ngf * 2, 3, stride=2, output_padding=1, padding=1, bias=use_bias)
         self.norm_up1 = norm_layer(ngf * 2)
         self.conv_iwt2 = nn.Conv3d(ngf * 2, ngf * 2, (3, 1, 3), stride=(2, 1, 2), padding=(1, 0, 1), bias=use_bias)
@@ -242,20 +226,18 @@ class WTResnetGenerator3D_HybridMamba(nn.Module):
         self.conv_cat = nn.Conv3d(ngf * 2, ngf * 1, 3, stride=1, padding=1, bias=use_bias)
         self.conv_cat_norm = norm_layer(ngf)
 
-        # ---------- 输出 ----------
         self.pad2 = nn.ReplicationPad3d(3)
         self.conv_out = nn.Conv3d(ngf, output_nc, 7)
         self.tanh = nn.Tanh()
 
     def forward(self, x):
-        # ---------- 头 ----------
+        # ---------- head ----------
         x = self.pad1(x)
         x = self.conv1(x)
         x = self.norm1(x)
         x = F.silu(x, inplace=True)
 
-        # ---------- 下采样 ----------
-        coeff_list = []  # 存子带
+        coeff_list = []
 
         curr_x = wavelet.wavelet_3d_transform(x, self.wt_f2)
         hh = self.wt_p1(curr_x[:, :, 1:, :, :, :])
@@ -275,11 +257,10 @@ class WTResnetGenerator3D_HybridMamba(nn.Module):
         x = self.norm3(x)
         x = F.silu(x, inplace=True)
 
-        # ---------- 🌟 Hybrid Mamba Bottleneck ----------
+        # ---------- Hybrid Mamba Bottleneck ----------
         for blk in self.bottleneck_blocks:
             x = blk(x)
 
-        # ---------- 上采样 ----------
         x = self.up1(x)
         x = self.norm_up1(x)
         x = F.silu(x, inplace=True)
@@ -397,14 +378,11 @@ class VisionMambaBlock3D(nn.Module):
         """
         x: [B,C,D,H,W]
         """
-
         B, C, D, H, W = x.shape
-
         residual = x
 
         # Pre-Norm
         x = self.ln_3d(x)
-
 
         # ==============================
         # D-axis scan
@@ -449,7 +427,6 @@ class VisionMambaBlock3D(nn.Module):
 
         out_w = out_w.reshape(B, D, H, W, C)
         out_w = out_w.permute(0, 4, 1, 2, 3)
-
 
         # ==============================
         # Adaptive axis fusion
@@ -520,74 +497,98 @@ class GlobalAvgPool3d(nn.Module):
         return x.mean(dim=(2, 3, 4), keepdim=True)
 
 
-# Defines the PatchGAN discriminator with the specified arguments.
-class NLayerDiscriminator(nn.Module):
-    def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.BatchNorm3d, use_sigmoid=False):
-        super(NLayerDiscriminator, self).__init__()
+class WTLayerDiscriminator3D(nn.Module):
+
+    def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.BatchNorm3d):
+        super(WTLayerDiscriminator3D, self).__init__()
+
         if type(norm_layer) == functools.partial:
             use_bias = norm_layer.func == nn.InstanceNorm3d
         else:
             use_bias = norm_layer == nn.InstanceNorm3d
-#zzb default=4
-        kw = 2
-        padw = 1
-        sequence = [
-            nn.Conv3d(input_nc, ndf, kernel_size=kw, stride=2, padding=padw),
-            nn.LeakyReLU(0.2, True)
-        ]
 
+        kw = 4
+        padw = 1
+        sequence = [nn.Conv3d(input_nc, ndf, kernel_size=kw, stride=2, padding=padw), nn.LeakyReLU(0.2, True)]
         nf_mult = 1
         nf_mult_prev = 1
+
         for n in range(1, n_layers):
             nf_mult_prev = nf_mult
-            nf_mult = min(2**n, 8)
+            nf_mult = min(2 ** n, 8)
             sequence += [
-                nn.Conv3d(ndf * nf_mult_prev, ndf * nf_mult,
-                          kernel_size=kw, stride=2, padding=padw, bias=use_bias),
+                nn.Conv3d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=2, padding=padw, bias=use_bias),
+                norm_layer(ndf * nf_mult),
+                nn.LeakyReLU(0.2, True),
+                WTConv3d_D(ndf * nf_mult, ndf * nf_mult, kernel_size=kw, stride=1),
                 norm_layer(ndf * nf_mult),
                 nn.LeakyReLU(0.2, True)
             ]
 
         nf_mult_prev = nf_mult
-        nf_mult = min(2**n_layers, 8)
+        nf_mult = min(2 ** n_layers, 8)
         sequence += [
-            nn.Conv3d(ndf * nf_mult_prev, ndf * nf_mult,
-                      kernel_size=kw, stride=1, padding=padw, bias=use_bias),
+            nn.Conv3d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=1, padding=padw, bias=use_bias),
             norm_layer(ndf * nf_mult),
-            nn.LeakyReLU(0.2, True)
+            nn.LeakyReLU(0.2, True),
         ]
 
         sequence += [nn.Conv3d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]
-
-        if use_sigmoid:
-            sequence += [nn.Sigmoid()]
-
         self.model = nn.Sequential(*sequence)
 
     def forward(self, input):
         return self.model(input)
 
+class WaveletTextureDiscriminator(nn.Module):
+    """
+    WT-based 3D frequency discriminator.
 
-class PixelDiscriminator(nn.Module):
-    def __init__(self, input_nc, ndf=64, norm_layer=nn.BatchNorm3d, use_sigmoid=False):
-        super(PixelDiscriminator, self).__init__()
-        if type(norm_layer) == functools.partial:
-            use_bias = norm_layer.func == nn.InstanceNorm3d
-        else:
-            use_bias = norm_layer == nn.InstanceNorm3d
+    Input:
+        [B,C,D,H,W]
 
-        self.net = [
-            nn.Conv3d(input_nc, ndf, kernel_size=1, stride=1, padding=0),
-            nn.LeakyReLU(0.2, True),
-            nn.Conv3d(ndf, ndf * 2, kernel_size=1, stride=1, padding=0, bias=use_bias),
-            norm_layer(ndf * 2),
-            nn.LeakyReLU(0.2, True),
-            nn.Conv3d(ndf * 2, 1, kernel_size=1, stride=1, padding=0, bias=use_bias)]
+    Wavelet output:
+        [B,C,4,D,H,W]
+    """
 
-        if use_sigmoid:
-            self.net.append(nn.Sigmoid())
+    def __init__(self, input_nc, ndf=32, wavelet_name='haar', ll_weight=0.05):
+        super().__init__()
+        self.ll_weight = ll_weight
 
-        self.net = nn.Sequential(*self.net)
+        wt_filter, _ = wavelet.create_3d_wavelet_filter(wavelet_name, input_nc, input_nc, torch.float)
+        self.register_buffer('wt_filter', wt_filter)
 
-    def forward(self, input):
-        return self.net(input)
+        hf_input_channels = input_nc * 6
+        ll_channels = max(ndf // 4, 8)
+
+        self.hf_net = nn.Sequential(
+            spectral_norm(nn.Conv3d(hf_input_channels, ndf, kernel_size=3, stride=1, padding=1)),
+            nn.LeakyReLU(0.2, inplace=True),
+            spectral_norm(nn.Conv3d(ndf, ndf * 2, kernel_size=3, stride=2, padding=1)),
+            nn.LeakyReLU(0.2, inplace=True),
+            spectral_norm(nn.Conv3d(ndf * 2, ndf * 2, kernel_size=3, stride=1, padding=2, dilation=2)),
+            nn.LeakyReLU(0.2, inplace=True)
+        )
+
+        self.ll_net = nn.Sequential(
+            spectral_norm(nn.Conv3d(input_nc, ll_channels, kernel_size=3, stride=2, padding=1)),
+            nn.LeakyReLU(0.2, inplace=True)
+        )
+
+        self.out_conv = spectral_norm(nn.Conv3d(ndf * 2 + ll_channels, 1, kernel_size=3, stride=1, padding=1))
+
+    def forward(self, x, return_components=False):
+        wt = wavelet.wavelet_3d_transform(x, self.wt_filter)
+        B, C, _, D, H, W = wt.shape
+
+        low_freq = wt[:, :, 0, :, :, :]
+        high_freq = wt[:, :, 1:, :, :, :].contiguous().reshape(B, C * 3, D, H, W)
+        high_freq_feature = torch.cat([high_freq, high_freq.abs()], dim=1)
+
+        hf_feat = self.hf_net(high_freq_feature)
+        ll_feat = self.ll_net(low_freq)
+        feat = torch.cat([hf_feat, self.ll_weight * ll_feat], dim=1)
+        pred = self.out_conv(feat)
+
+        if return_components:
+            return pred, hf_feat, ll_feat
+        return pred

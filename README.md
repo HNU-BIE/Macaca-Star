@@ -89,7 +89,7 @@ GPU acceleration and a compatible CUDA environment are required for deep learnin
 
 For inference, pretrained CycWave-Mamba checkpoints are provided in the [`checkpoints`](https://github.com/HNU-BIE/Macaca-Star/tree/main/checkpoints) folder.
 
-For model training, a high-memory NVIDIA GPU is recommended. Our development and training environment used GPUs with memory capacity comparable to an **NVIDIA RTX A6000 (48 GB)** or higher.
+For model training, our development environment used two NVIDIA RTX A6000 GPUs (48 GB each).
 
 
 # Installation

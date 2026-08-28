@@ -43,8 +43,7 @@ class CycleGANModel(BaseModel):
         BaseModel.initialize(self, opt)
 
         # specify the training losses you want to print out. The program will call base_model.get_current_losses
-        self.loss_names = ['D_A', 'G_A', 'cycle_A', 'idt_A', 'D_B', 'G_B', 'cycle_B', 'idt_B']
-        # self.loss_names = ['D_A', 'G_A', 'cycle_A', 'cor_coe_GA', 'D_B', 'G_B', 'cycle_B', 'cor_coe_GB']
+        self.loss_names = ['D_A', 'G_A', 'cycle_A', 'idt_A', 'ssim_A', 'cor_coe_GA','D_B', 'G_B', 'cycle_B', 'idt_B','ssim_B','cor_coe_GB','G_A_freq']
         # specify the images you want to save/display. The program will call base_model.get_current_visuals
         visual_names_A = ['real_A', 'fake_B', 'rec_A']
         visual_names_B = ['real_B', 'fake_A', 'rec_B']
@@ -61,19 +60,20 @@ class CycleGANModel(BaseModel):
 
         # load/define networks
         # The naming conversion is different from those used in the paper
-        # Code (paper): G_A (G), G_B (F), D_A (D_Y), D_B (D_X)
         self.netG_A = networks3D.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.norm,   # nc number channels
-                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
+                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids,blocks=[3,2,3],ismerge=False)
         self.netG_B = networks3D.define_G(opt.output_nc, opt.input_nc, opt.ngf, opt.netG, opt.norm,
-                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
+                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids,blocks=[4,0,4],ismerge=False)
 
         if self.isTrain:
             use_sigmoid = opt.no_lsgan
+            print('use_sigmoid:'+str(use_sigmoid))
             self.netD_A = networks3D.define_D(opt.output_nc, opt.ndf, opt.netD,
                                             opt.n_layers_D, opt.norm, use_sigmoid, opt.init_type, opt.init_gain, self.gpu_ids)
             self.netD_B = networks3D.define_D(opt.input_nc, opt.ndf, opt.netD,
                                             opt.n_layers_D, opt.norm, use_sigmoid, opt.init_type, opt.init_gain, self.gpu_ids)
-
+            self.netD_B_freq = networks3D.define_WTD(opt.input_nc, opt.ndf, opt.netD,
+                                            opt.n_layers_D, opt.norm, use_sigmoid, opt.init_type, opt.init_gain, self.gpu_ids)
         if self.isTrain:
             self.fake_A_pool = ImagePool(opt.pool_size)
             self.fake_B_pool = ImagePool(opt.pool_size)
@@ -86,9 +86,12 @@ class CycleGANModel(BaseModel):
                                                 lr=opt.lr, betas=(opt.beta1, 0.999))
             self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_A.parameters(), self.netD_B.parameters()),
                                                 lr=opt.lr, betas=(opt.beta1, 0.999))
+            self.optimizer_D_freq = torch.optim.Adam(self.netD_B_freq.parameters(), lr=opt.lr * 0.5,betas=(opt.beta1, 0.999))
             self.optimizers = []
             self.optimizers.append(self.optimizer_G)
             self.optimizers.append(self.optimizer_D)
+            ssim_loss = ssim.SSIM3D(window_size=5)
+            self.criterionSSIM = lambda pred, target: 1 - ssim_loss(pred, target)
 
     def set_input(self, input):
         AtoB = self.opt.which_direction == 'AtoB'
@@ -124,51 +127,58 @@ class CycleGANModel(BaseModel):
         fake_A = self.fake_A_pool.query(self.fake_A)
         self.loss_D_B = self.backward_D_basic(self.netD_B, self.real_A, fake_A)
 
+    def backward_D_B_freq(self):
+        fake_B = self.fake_B_pool.query(self.fake_B)
+        self.loss_D_B_freq = self.backward_D_basic(self.netD_B_freq, self.real_B, fake_B)
+
     def backward_G(self):
         lambda_idt = self.opt.lambda_identity
         lambda_A = self.opt.lambda_A
         lambda_B = self.opt.lambda_B
-        '''
-        lambda_coA & lambda_coB
-        '''
+        lambda_ssim = self.opt.lambda_ssim
+        lambda_freq = 2
         lambda_co_A = self.opt.lambda_co_A
         lambda_co_B = self.opt.lambda_co_B
 
         # Identity loss
         if lambda_idt > 0:
-            # G_A should be identity if real_B is fed.
             self.idt_A = self.netG_A(self.real_B)
             self.loss_idt_A = self.criterionIdt(self.idt_A, self.real_B) * lambda_B * lambda_idt
-            # G_B should be identity if real_A is fed.
             self.idt_B = self.netG_B(self.real_A)
             self.loss_idt_B = self.criterionIdt(self.idt_B, self.real_A) * lambda_A * lambda_idt
         else:
             self.loss_idt_A = 0
             self.loss_idt_B = 0
 
-        # GAN loss D_A(G_A(A))
-        self.loss_G_A = self.criterionGAN(self.netD_A(self.fake_B), True)
+        # GAN loss
+        self.loss_G_A_spatial = self.criterionGAN(self.netD_A(self.fake_B), True)
+        self.loss_G_A_freq = self.criterionGAN(self.netD_B_freq(self.fake_B), True)
+        self.loss_G_A = self.loss_G_A_spatial + lambda_freq * self.loss_G_A_freq
 
-        # GAN loss D_B(G_B(B))
         self.loss_G_B = self.criterionGAN(self.netD_B(self.fake_A), True)
 
-        # Forward cycle loss
+        # Cycle loss
         self.loss_cycle_A = self.criterionCycle(self.rec_A, self.real_A) * lambda_A
-
-        # Backward cycle loss
         self.loss_cycle_B = self.criterionCycle(self.rec_B, self.real_B) * lambda_B
 
-        '''
-        self.cor_coeLoss
-        '''
-        self.loss_cor_coe_GA = networks3D.Cor_CoeLoss(self.fake_B,
-                                                    self.real_A) * lambda_co_A  # fake ct & real mr; Evaluate the Generator of ct(G_A)
-        self.loss_cor_coe_GB = networks3D.Cor_CoeLoss(self.fake_A,
-                                                    self.real_B) * lambda_co_B  # fake mr & real ct; Evaluate the Generator of mr(G_B)
+        # SSIM loss
+        if lambda_ssim > 0:
+            real_A_01 = (self.real_A + 1) * 0.5
+            rec_A_01 = (self.rec_A + 1) * 0.5
+            real_B_01 = (self.real_B + 1) * 0.5
+            rec_B_01 = (self.rec_B + 1) * 0.5
+            self.loss_ssim_A = self.criterionSSIM(rec_A_01, real_A_01) * lambda_ssim
+            self.loss_ssim_B = self.criterionSSIM(rec_B_01, real_B_01) * lambda_ssim
+        else:
+            self.loss_ssim_A = 0
+            self.loss_ssim_B = 0
 
-        # combined loss
-        self.loss_G = self.loss_G_A + self.loss_G_B + self.loss_cycle_A + self.loss_cycle_B + self.loss_idt_A + self.loss_idt_B
-        # self.loss_G = self.loss_G_A + self.loss_G_B + self.loss_cycle_A + self.loss_cycle_B + self.loss_idt_A + self.loss_idt_B + self.loss_cor_coe_GA + self.loss_cor_coe_GB
+        # Correlation coefficient loss
+        self.loss_cor_coe_GA = networks3D.Cor_CoeLoss(self.fake_B, self.real_A) * lambda_co_A
+        self.loss_cor_coe_GB = networks3D.Cor_CoeLoss(self.fake_A, self.real_B) * lambda_co_B
+
+        # Combined loss
+        self.loss_G = self.loss_G_A + self.loss_G_B + self.loss_cycle_A + self.loss_cycle_B + self.loss_idt_A + self.loss_idt_B + self.loss_ssim_A + self.loss_ssim_B + self.loss_cor_coe_GA + self.loss_cor_coe_GB
         self.loss_G.backward()
 
     def optimize_parameters(self):

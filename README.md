@@ -11,17 +11,25 @@
 - [License](#license)
 
 
-# Overview
+## Overview
 
-**Macaca-Star** is an open-source, automated, and modular framework for multimodal whole-brain mapping in macaques. It is designed to integrate large-scale optical imaging data with subject-specific in vivo MRI and standard macaque brain atlases within a common anatomical space.
+**Macaca-Star** is an open-source, automated, and modular pipeline for multimodal whole-brain mapping in macaques. It integrates large-scale optical imaging data with standard macaque brain atlases in a unified stereotaxic space, with optional guidance from subject-specific *in vivo* MRI.
 
-Macaca-Star supports multiple imaging streams, including **fMOST PI/GFP data**, **serial fluorescence sections**, **block-face images**, and **MRI data**. The framework combines modality-specific image preprocessing, 2D-to-3D reconstruction, deep learning-based cross-modal translation, and nonlinear registration to address substantial tissue deformation, cross-modal appearance discrepancies, and inter-individual anatomical variability.
+The pipeline supports diverse imaging streams, which are organized into two complementary categories:
 
-Macaca-Star incorporates CycWave-Mamba, a deep learning model for cross-modal image translation in both 2D and 3D. In the section-based pipeline, 2D fluorescence images are translated into block-face-like representations to facilitate correspondence with their associated block-face images and subsequent 3D reconstruction. In the volumetric pipeline, reconstructed block-face and fMOST PI volumes are translated into synthetic T1-weighted MRI-like volumes for registration with MRI-based reference spaces.
+* **Anatomical Imaging** — used to establish and refine the spatial correspondence between datasets:
 
-Macaca-Star supports both direct registration to the **NIMH Macaque Template (NMT)** and registration guided by **subject-specific in vivo MRI**. The resulting spatial transformations can be applied to map axonal projections, soma locations, and other extracted biological features into the standard atlas space for cross-subject integration and atlas-based analysis.
+  * **3D optical volumes:** high-resolution volumetric datasets with anatomical contrast, such as fMOST-PI and serial block-face imaging.
+  * **2D serial sections:** section-based histological datasets, such as serial fluorescence sections.
+  * **Structural MRI:** optional subject-specific *in vivo* or *ex vivo* anatomical scans for anatomical guidance.
 
-The [`example`](https://github.com/HNU-BIE/Macaca-Star/tree/main/example) folder contains example data for testing the pipeline.
+* **Biological Feature Imaging** — used for spatial mapping and downstream analysis:
+
+  * **Axonal projections:** continuous 3D fluorescence volumes, such as fMOST-GFP axon-tracing data.
+  * **Soma distributions:** microscopic cellular markers and spatial distributions of labeled neurons.
+
+By integrating modality-specific preprocessing, automated 2D-to-3D reconstruction, deep learning–based cross-modal translation, and nonlinear registration, Macaca-Star establishes a unified framework for mapping heterogeneous optical imaging datasets into a common macaque brain space. This design facilitates the integration of high-resolution anatomical and biological information while accommodating tissue distortion, substantial cross-modal appearance differences, and inter-individual anatomical variability.
+
 
 
 # Macaca-Star Pipeline

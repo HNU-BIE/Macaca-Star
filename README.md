@@ -96,7 +96,7 @@ conda env create -f enviroment.yml
 
 Macaca-Star uses YAML configuration files to manage dataset paths, preprocessing options, model parameters, and training or inference settings. Before running the pipeline, select the appropriate configuration file and update the paths and parameters according to your dataset and computational environment.
 
-Configuration
+**Configuration**
 
 Example configuration files are provided for different processing tasks:
 

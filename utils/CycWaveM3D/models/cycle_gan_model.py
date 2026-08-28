@@ -2,8 +2,7 @@ import torch
 import itertools
 import random
 from .base_model import BaseModel
-from . import networks3D
-
+from . import networks3D, ssim
 
 class ImagePool():
     def __init__(self, pool_size):
@@ -39,6 +38,7 @@ class CycleGANModel(BaseModel):
     def name(self):
         return 'CycleGANModel'
 
+
     def initialize(self, opt):
         BaseModel.initialize(self, opt)
 
@@ -54,12 +54,11 @@ class CycleGANModel(BaseModel):
         self.visual_names = visual_names_A + visual_names_B
         # specify the models you want to save to the disk. The program will call base_model.save_networks and base_model.load_networks
         if self.isTrain:
-            self.model_names = ['G_A', 'G_B', 'D_A', 'D_B']
+            self.model_names = ['G_A', 'G_B', 'D_A', 'D_B','D_B_freq']
         else:  # during test time, only load Gs
             self.model_names = ['G_A', 'G_B']
 
         # load/define networks
-        # The naming conversion is different from those used in the paper
         self.netG_A = networks3D.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.norm,   # nc number channels
                                         not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids,blocks=[3,2,3],ismerge=False)
         self.netG_B = networks3D.define_G(opt.output_nc, opt.input_nc, opt.ngf, opt.netG, opt.norm,
@@ -68,15 +67,13 @@ class CycleGANModel(BaseModel):
         if self.isTrain:
             use_sigmoid = opt.no_lsgan
             print('use_sigmoid:'+str(use_sigmoid))
-            self.netD_A = networks3D.define_D(opt.output_nc, opt.ndf, opt.netD,
-                                            opt.n_layers_D, opt.norm, use_sigmoid, opt.init_type, opt.init_gain, self.gpu_ids)
-            self.netD_B = networks3D.define_D(opt.input_nc, opt.ndf, opt.netD,
-                                            opt.n_layers_D, opt.norm, use_sigmoid, opt.init_type, opt.init_gain, self.gpu_ids)
-            self.netD_B_freq = networks3D.define_WTD(opt.input_nc, opt.ndf, opt.netD,
-                                            opt.n_layers_D, opt.norm, use_sigmoid, opt.init_type, opt.init_gain, self.gpu_ids)
+            self.netD_A = networks3D.define_D(opt.output_nc, opt.ndf, opt.netD,opt.n_layers_D, opt.norm, use_sigmoid, opt.init_type, opt.init_gain, self.gpu_ids)
+            self.netD_B = networks3D.define_D(opt.input_nc, opt.ndf, opt.netD,opt.n_layers_D, opt.norm, use_sigmoid, opt.init_type, opt.init_gain, self.gpu_ids)
+            self.netD_B_freq = networks3D.define_WTD(opt.input_nc, opt.ndf, opt.init_type,opt.init_gain, self.gpu_ids)
         if self.isTrain:
             self.fake_A_pool = ImagePool(opt.pool_size)
             self.fake_B_pool = ImagePool(opt.pool_size)
+            self.fake_B_freq_pool = ImagePool(opt.pool_size)
             # define loss functions
             self.criterionGAN = networks3D.GANLoss(use_lsgan=not opt.no_lsgan).to(self.device)
             self.criterionCycle = torch.nn.L1Loss()
@@ -90,8 +87,10 @@ class CycleGANModel(BaseModel):
             self.optimizers = []
             self.optimizers.append(self.optimizer_G)
             self.optimizers.append(self.optimizer_D)
+            self.optimizers.append(self.optimizer_D_freq)
             ssim_loss = ssim.SSIM3D(window_size=5)
             self.criterionSSIM = lambda pred, target: 1 - ssim_loss(pred, target)
+
 
     def set_input(self, input):
         AtoB = self.opt.which_direction == 'AtoB'
@@ -107,12 +106,15 @@ class CycleGANModel(BaseModel):
         self.rec_B = self.netG_A(self.fake_A)
 
     def backward_D_basic(self, netD, real, fake):
+
         # Real
         pred_real = netD(real)
         loss_D_real = self.criterionGAN(pred_real, True)
+
         # Fake
         pred_fake = netD(fake.detach())
         loss_D_fake = self.criterionGAN(pred_fake, False)
+
         # Combined loss
         loss_D = (loss_D_real + loss_D_fake) * 0.5
         # backward
@@ -128,17 +130,16 @@ class CycleGANModel(BaseModel):
         self.loss_D_B = self.backward_D_basic(self.netD_B, self.real_A, fake_A)
 
     def backward_D_B_freq(self):
-        fake_B = self.fake_B_pool.query(self.fake_B)
+        fake_B = self.fake_B_freq_pool.query(self.fake_B)
         self.loss_D_B_freq = self.backward_D_basic(self.netD_B_freq, self.real_B, fake_B)
+
 
     def backward_G(self):
         lambda_idt = self.opt.lambda_identity
         lambda_A = self.opt.lambda_A
         lambda_B = self.opt.lambda_B
         lambda_ssim = self.opt.lambda_ssim
-        lambda_freq = 2
-        lambda_co_A = self.opt.lambda_co_A
-        lambda_co_B = self.opt.lambda_co_B
+        lambda_freq = self.opt.lambda_freq
 
         # Identity loss
         if lambda_idt > 0:
@@ -173,19 +174,15 @@ class CycleGANModel(BaseModel):
             self.loss_ssim_A = 0
             self.loss_ssim_B = 0
 
-        # Correlation coefficient loss
-        self.loss_cor_coe_GA = networks3D.Cor_CoeLoss(self.fake_B, self.real_A) * lambda_co_A
-        self.loss_cor_coe_GB = networks3D.Cor_CoeLoss(self.fake_A, self.real_B) * lambda_co_B
-
         # Combined loss
-        self.loss_G = self.loss_G_A + self.loss_G_B + self.loss_cycle_A + self.loss_cycle_B + self.loss_idt_A + self.loss_idt_B + self.loss_ssim_A + self.loss_ssim_B + self.loss_cor_coe_GA + self.loss_cor_coe_GB
+        self.loss_G = self.loss_G_A + self.loss_G_B + self.loss_cycle_A + self.loss_cycle_B + self.loss_idt_A + self.loss_idt_B + self.loss_ssim_A + self.loss_ssim_B
         self.loss_G.backward()
 
     def optimize_parameters(self):
         # forward
         self.forward()
         # G_A and G_B
-        self.set_requires_grad([self.netD_A, self.netD_B], False)
+        self.set_requires_grad([self.netD_A, self.netD_B, self.netD_B_freq], False)
         self.optimizer_G.zero_grad()
         self.backward_G()
         self.optimizer_G.step()
@@ -195,3 +192,10 @@ class CycleGANModel(BaseModel):
         self.backward_D_A()
         self.backward_D_B()
         self.optimizer_D.step()
+
+        # Update Frequency Discriminator (D_B_freq)
+        self.set_requires_grad([self.netD_B_freq], True)
+        self.optimizer_D_freq.zero_grad()
+        self.backward_D_B_freq()
+        self.optimizer_D_freq.step()
+

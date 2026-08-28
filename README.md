@@ -21,7 +21,7 @@ The pipeline supports diverse imaging data, which are organized into two complem
 
   * **3D optical volumes:** high-resolution volumetric datasets with anatomical contrast, such as fMOST-PI and serial block-face imaging.
   * **2D serial sections:** section-based histological datasets, such as serial fluorescence sections.
-  * **Structural MRI:** optional subject-specific *in vivo* or *ex vivo* anatomical scans for anatomical guidance.
+  * **Structural MRI:** optional subject-specific *in vivo* MRI data for anatomical guidance.
 
 * **Biological Feature Imaging** — used for spatial mapping and downstream analysis:
 

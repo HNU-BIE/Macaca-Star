@@ -92,26 +92,25 @@ or
 conda env create -f enviroment.yml
 ``` 
 
-# 🚀 Getting Started
-
-Macaca-Star uses YAML configuration files to manage dataset paths, preprocessing options, model parameters, and training or inference settings. Before running the pipeline, select the appropriate configuration file and update the paths and parameters according to your dataset and computational environment.
-
+# 🚀 Getting Started  
+  
+Macaca-Star uses YAML configuration files to manage dataset paths, preprocessing options, model parameters, and training or inference settings. Before running the pipeline, select the appropriate configuration file and update the paths and parameters according to your dataset and computational environment.  
+  
 **Configuration**  
 Example configuration files are provided for different processing tasks:  
+  
+**fMOST_PI_config.yaml** — configuration for fMOST-PI data preprocessing.  
+**CycWave-Mamba2D_config.yaml** — configuration for 2D cross-modal translation using CycWave-Mamba.  
 
-fMOST_PI_config.yaml — configuration for fMOST-PI data preprocessing.  
-CycWave-Mamba2D_config.yaml — configuration for 2D cross-modal translation using CycWave-Mamba.  
-
-**Running the Pipeline**
+**Running the Pipeline**  
 Execute the corresponding script:  
+
 **For 3D fMOST-PI data:**  
-
 python fMOST_PI.py  
-
+  
 **For 2D fluorescence section data:**  
-
 python fluoresence_sections.py  
-
+  
 Each script automatically loads its corresponding YAML configuration file and executes the complete processing workflow end-to-end according to the specified settings. Individual processing modules can also be executed independently when needed, providing flexibility for users to run specific steps or customize the overall workflow.
 
 # 📜 License

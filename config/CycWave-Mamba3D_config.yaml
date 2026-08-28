@@ -1,0 +1,82 @@
+# config/config.yaml
+
+# ==============================================================================
+# Common / Base Configuration (Shared by both Train and Test)
+# ==============================================================================
+common:
+  # Dataset & Preprocessing
+  data_path: "./Data_folder/train/"     # Train images path
+  val_path: "./Data_folder/test/"       # Validation images path
+  batch_size: 1                         # Input batch size
+  patch_size: [128, 156, 200]           # Size of the patches extracted from the image
+  input_nc: 1                           # Number of input image channels
+  output_nc: 1                          # Number of output image channels
+  resample: false                       # Decide whether to rescale images to a new resolution
+  new_resolution: [0.25, 0.25, 0.25]    # New resolution if resampling
+  min_pixel: 0.1                        # Percentage of minimum non-zero pixels in the cropped label
+  drop_ratio: 0                         # Probability to drop empty cropped area (0: drop all, 1: accept all)
+  workers: 8                            # Number of data loading workers
+
+  # Model Architecture
+  model: "cycle_gan"                    # Model to use
+  netG: "resnet_9blocks"                # Generator architecture
+  netD: "n_layers"                      # Discriminator architecture
+  n_layers_D: 3                         # Only used if netD == 'n_layers'
+  ngf: 64                               # Number of generator filters in first conv layer
+  ndf: 64                               # Number of discriminator filters in first conv layer
+  norm: "instance"                      # Normalization: instance | batch
+  no_dropout: true                      # Disable dropout for CycleGAN generator (default: true)
+  init_type: "normal"                   # Network initialization: normal | xavier | kaiming | orthogonal
+  init_gain: 0.02                       # Scaling factor for initialization
+
+  # System & Experiment
+  name: "fMOSTPI2NMT"                   # Name of the experiment
+  gpu_ids: [0]                          # GPU IDs: e.g. [0], [0, 1], or [] for CPU
+  checkpoints_dir: "./checkpoints"      # Models are saved here
+  which_direction: "AtoB"               # AtoB or BtoA
+  verbose: false                        # Print more debugging information
+  suffix: ""                            # Customized suffix: e.g., {model}_{netG}
+
+# ==============================================================================
+# Training Specific Configuration
+# ==============================================================================
+train:
+  isTrain: true
+  phase: "train"                        # train, val, etc.
+  continue_train: false                 # Continue training: load the latest model
+  which_epoch: "latest"                 # Which epoch to load
+  epoch_count: 1                        # Starting epoch count
+  niter: 800                            # Number of iterations at starting learning rate
+  niter_decay: 800                      # Number of iterations to linearly decay learning rate to zero
+  lr: 0.0002                            # Initial learning rate for Adam
+  beta1: 0.5                            # Momentum term of Adam
+  lr_policy: "lambda"                   # LR policy: lambda | step | plateau | cosine
+  lr_decay_iters: 50                    # Multiply by a gamma every lr_decay_iters iterations
+  no_lsgan: false                       # Do not use LSGAN; if false, use LSGAN
+  pool_size: 50                         # Buffer size storing previously generated images
+
+  # CycleGAN Loss Weights (from CycleGANModel.modify_commandline_options)
+  lambda_A: 10.0                        # Weight for cycle loss (A -> B -> A)
+  lambda_B: 10.0                        # Weight for cycle loss (B -> A -> B)
+  lambda_identity: 0.5                 # Weight for identity mapping loss
+  lambda_co_A: 2.0                      # Weight for correlation coefficient loss (A -> B)
+  lambda_co_B: 2.0                      # Weight for correlation coefficient loss (B -> A)
+
+  # Logging & Checkpoint Frequencies
+  print_freq: 100                       # Frequency of showing training results on console
+  save_latest_freq: 1000                # Frequency of saving the latest results
+  save_epoch_freq: 200                  # Frequency of saving checkpoints at end of epochs
+  no_html: false                        # Do not save intermediate training results to html
+
+# ==============================================================================
+# Testing Specific Configuration
+# ==============================================================================
+test:
+  isTrain: false
+  phase: "test"                         # test
+  model: "test"                         # Use test model (generator only)
+  which_epoch: "latest"                 # Which epoch to load
+  image: "./Data_folder/test/0.nii.gz"  # Input test image path
+  result: "./Data_folder/test/result_0.nii" # Path to save test result
+  stride_inplane: 32                    # Stride size in 2D plane
+  stride_layer: 32                      # Stride size in z direction

@@ -1,15 +1,10 @@
 import os
 import torch
 from collections import OrderedDict
-from utils.CycleGan_3D.models import networks3D
+from utils.CycWaveM3D.models import networks3D
 
 class BaseModel():
 
-    # modify parser to add command line options,
-    # and also change the default values if needed
-    @staticmethod
-    def modify_commandline_options(parser, is_train):
-        return parser
 
     def name(self):
         return 'BaseModel'

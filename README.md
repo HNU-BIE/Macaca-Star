@@ -15,7 +15,7 @@
 
 **Macaca-Star** is an open-source, automated, and modular pipeline for multimodal whole-brain mapping in macaques. It integrates large-scale optical imaging data with standard macaque brain atlases in a unified stereotaxic space, with optional guidance from subject-specific *in vivo* MRI.
 
-The pipeline supports diverse imaging streams, which are organized into two complementary categories:
+The pipeline supports diverse imaging data, which are organized into two complementary categories:
 
 * **Anatomical Imaging** — used to establish and refine the spatial correspondence between datasets:
 

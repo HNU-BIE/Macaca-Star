@@ -58,16 +58,16 @@ class CycleGANModel(BaseModel):
             self.model_names = ['G_A', 'G_B']
 
         # load/define networks
-        self.netG_A = networks3D.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.norm,   # nc number channels
+        self.netG_A = networks3D.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.norm,   # nc number channels
                                         not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, blocks=[3,2,3],ismerge=False)
-        self.netG_B = networks3D.define_G(opt.output_nc, opt.input_nc, opt.ngf, opt.netG, opt.norm,
+        self.netG_B = networks3D.define_G(opt.output_nc, opt.input_nc, opt.ngf, opt.norm,
                                         not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, blocks=[4,0,4],ismerge=False)
 
         if self.isTrain:
             use_sigmoid = opt.no_lsgan
             print('use_sigmoid:'+str(use_sigmoid))
-            self.netD_A = networks3D.define_D(opt.output_nc, opt.ndf, opt.netD,opt.n_layers_D, opt.norm, use_sigmoid, opt.init_type, opt.init_gain, self.gpu_ids)
-            self.netD_B = networks3D.define_D(opt.input_nc, opt.ndf, opt.netD,opt.n_layers_D, opt.norm, use_sigmoid, opt.init_type, opt.init_gain, self.gpu_ids)
+            self.netD_A = networks3D.define_D(opt.output_nc, opt.ndf, opt.n_layers_D, opt.norm, use_sigmoid, opt.init_type, opt.init_gain, self.gpu_ids)
+            self.netD_B = networks3D.define_D(opt.input_nc, opt.ndf, opt.n_layers_D, opt.norm, use_sigmoid, opt.init_type, opt.init_gain, self.gpu_ids)
             self.netD_B_freq = networks3D.define_WTD(opt.input_nc, opt.ndf, opt.init_type,opt.init_gain, self.gpu_ids)
         if self.isTrain:
             self.fake_A_pool = ImagePool(opt.pool_size)

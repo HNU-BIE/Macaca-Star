@@ -32,7 +32,7 @@ By integrating modality-specific preprocessing, automated 2D-to-3D reconstructio
 
 
 
-# ⭐ Macaca-Star Pipeline
+# Macaca-Star Pipeline
 
 Macaca-Star provides an integrated processing and mapping framework for different types of macaque brain imaging data.
 

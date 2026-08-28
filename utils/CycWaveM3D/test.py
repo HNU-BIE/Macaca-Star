@@ -1,18 +1,12 @@
-import os
-
 import yaml
-import ants
-from utils.CycleGan_3D.options.test_options import TestOptions
-import sys
-from utils.CycleGan_3D.utils.NiftiDataset import *
-import utils.CycleGan_3D.utils.NiftiDataset as NiftiDataset_testing
-from torch.utils.data import DataLoader
-from utils.CycleGan_3D.models import create_model
+from utils.NiftiDataset import *
+import utils.NiftiDataset as NiftiDataset_testing
+from models import create_model
 import math
 from torch.autograd import Variable
 from tqdm import tqdm
 import datetime
-
+from utils.config_loader import load_config
 
 def from_numpy_to_itk(image_np, image_itk):
     image_np = np.transpose(image_np, (2, 1, 0))
@@ -32,7 +26,6 @@ def prepare_batch(image, ijk_patch_indices):
             image_batch.append(image_patch)
 
         image_batch = np.asarray(image_batch)
-        # image_batch = image_batch[:, :, :, :, np.newaxis]
         image_batches.append(image_batch)
 
     return image_batches
@@ -151,7 +144,7 @@ def inference(model, image_path, result_path, resample, resolution, patch_size_x
 
     for i in tqdm(range(len(batches))):
         batch = batches[i]
-
+        batch = np.transpose(batch, (0, 2, 1, 3))
         batch = (batch - 127.5) / 127.5
 
         batch = torch.from_numpy(batch[np.newaxis, :, :, :])
@@ -163,7 +156,10 @@ def inference(model, image_path, result_path, resample, resolution, patch_size_x
         pred = model.get_current_visuals()
         pred = pred['fake_B']
         pred = pred.squeeze().data.cpu().numpy()
-
+        if pred.ndim == 3:
+            pred = np.transpose(pred, (1, 0, 2))
+        elif pred.ndim == 4:
+            pred = np.transpose(pred, (0, 2, 1, 3))
         pred = (pred * 127.5) + 127.5
 
         istart = ijk_patch_indices[i][0][0]
@@ -216,11 +212,14 @@ def inference(model, image_path, result_path, resample, resolution, patch_size_x
 def PI_to_T1_cyclegan():
     YAML_PATH = os.getcwd() + '/config/fMOST_PI_config.yaml'
     fMOST_PI_CONFIG = yaml.safe_load(open(YAML_PATH, 'r'))
-    opt = TestOptions().parse()
+    opt = load_config("config/config.yaml", mode="test")
     opt.image = fMOST_PI_CONFIG['output_dir']+'/reg/PI_alignNMT.nii.gz'
-    opt.result =fMOST_PI_CONFIG['output_dir']+'/reg/T1likePI.nii.gz'
+    opt.result =fMOST_PI_CONFIG['output_dir']+'/reg/T1likePI_origin.nii.gz'
+    # opt.image = fMOST_PI_CONFIG['output_dir']+'/gm/pi.nii.gz'
+    # opt.result =fMOST_PI_CONFIG['output_dir']+'/gm/tipi.nii.gz'
     opt.checkpoints_dir = os.getcwd() + '/checkpoints'
     opt.name = 'fMOSTPI2NMT'
+    opt.gpu_ids = ''
     model = create_model(opt)
     model.setup(opt)
 
@@ -230,13 +229,14 @@ def PI_to_T1_cyclegan():
 def b_to_T1_cyclegan():
     YAML_PATH = os.getcwd() + '/config/fluor_sections_config.yaml'
     fluor_CONFIG = yaml.safe_load(open(YAML_PATH, 'r'))
-    opt = TestOptions().parse()
+    opt = load_config("config/config.yaml", mode="test")
     opt.name = 'Blockface2NMT'
     opt.netG = 'resnet_7blocks'
+    opt.gpu_ids = ''
     opt.ngf = 48
     opt.ndf = 48
     opt.image = fluor_CONFIG['output_dir']+'/reg3D/b_recon_oc_scale_alignMRI.nii.gz'
-    opt.result =fluor_CONFIG['output_dir']+'/reg3D/T1likeBlockface.nii.gz'
+    opt.result =fluor_CONFIG['output_dir']+'/reg3D/T1likeBlockface_origin.nii.gz'
     opt.checkpoints_dir = os.getcwd() + '/checkpoints'
     model = create_model(opt)
     model.setup(opt)

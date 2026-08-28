@@ -1,24 +1,15 @@
-import sys
-from utils.CycleGan_3D.utils.NiftiDataset import *
-import utils.CycleGan_3D.utils.NiftiDataset as NiftiDataset
+from utils.CycWaveM3D.utils.NiftiDataset import *
+import utils.CycWaveM3D.utils.NiftiDataset as NiftiDataset
 from torch.utils.data import DataLoader
-from utils.CycleGan_3D.options.train_options import TrainOptions
-# from logger import *
 import time
-from utils.CycleGan_3D.models import create_model
-from utils.CycleGan_3D.utils.visualizer import Visualizer
-from test import inference
+from utils.CycWaveM3D.models import create_model
+from utils.CycWaveM3D.utils.visualizer import Visualizer
 import os
-#print(torch.cuda.is_available())
-# torch.cuda.is_available()
-# print(torch.cuda.is_available())
-#os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
-#os.environ['CUDA_VISIBLE_DEVICES'] = '2'
-#device = torch.device('cuda' if torch.cuda.is_available() else 'cpu' )
-def train_cyclegan():
+from utils.config_loader import load_config
 
+def train_cyclegan():
     # -----  Loading the init options -----
-    opt = TrainOptions().parse()
+    opt = load_config("config/CycWave-Mamba3D_config.yaml")
     opt['data_path']=os.getcwd()+'/utils/CycleGan_3D/Data_folder/train'
     opt['val_path'] = os.getcwd() + '/utils/CycleGan_3D/Data_folder/test'
     opt['checkpoints_dir'] = os.getcwd() + '/utils/CycleGan_3D/checkpoints'

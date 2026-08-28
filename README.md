@@ -1,4 +1,4 @@
-# Macaca-Star: A Deep Learning-Assisted Pipeline for mesoscale connectivity mapping in the macaque brain
+#  Macaca-Star: A Deep Learning-Assisted Pipeline for mesoscale connectivity mapping in the macaque brain
 
 # Contents
 
@@ -11,31 +11,34 @@
 - [License](#license)
 
 
-# Overview
+## ✨ Overview
 
-**Macaca-Star** is an open-source, automated, and modular framework for multimodal whole-brain mapping in macaques. It is designed to integrate large-scale optical imaging data with subject-specific in vivo MRI and standard macaque brain atlases within a common anatomical space.
+**Macaca-Star** is an open-source, automated, and modular pipeline for multimodal whole-brain mapping in macaques. It integrates large-scale optical imaging data with standard macaque brain atlases in a unified stereotaxic space, with optional guidance from subject-specific *in vivo* MRI.
 
-Macaca-Star supports multiple imaging streams, including **fMOST PI/GFP data**, **serial fluorescence sections**, **block-face images**, and **MRI data**. The framework combines modality-specific image preprocessing, 2D-to-3D reconstruction, deep learning-based cross-modal translation, and nonlinear registration to address substantial tissue deformation, cross-modal appearance discrepancies, and inter-individual anatomical variability.
+The pipeline supports diverse imaging data, which are organized into two complementary categories:
 
-A key component of Macaca-Star is **CycWave-Mamba**, a deep learning model for cross-modal image translation in both 2D and 3D. In the section-based pipeline, 2D fluorescence images are translated into block-face-like representations to facilitate correspondence with their associated block-face images and subsequent 3D reconstruction. In the volumetric pipeline, reconstructed block-face and fMOST PI volumes are translated into synthetic T1-weighted MRI-like volumes for registration with MRI-based reference spaces.
+* **Anatomical Imaging** — used to establish and refine the spatial correspondence between datasets:
 
-Macaca-Star supports both direct registration to the **NIMH Macaque Template (NMT)** and registration guided by **subject-specific in vivo MRI**. The resulting spatial transformations can be applied to map axonal projections, soma locations, and other extracted biological features into the standard atlas space for cross-subject integration and atlas-based analysis.
+  * **3D optical volumes:** high-resolution volumetric datasets with anatomical contrast, such as fMOST-PI and serial block-face imaging.
+  * **2D serial sections:** section-based histological datasets, such as serial fluorescence sections.
+  * **Structural MRI:** optional subject-specific *in vivo* MRI data for anatomical guidance.
 
-The [`example`](https://github.com/HNU-BIE/Macaca-Star/tree/main/example) folder contains example data for testing the pipeline.
+* **Biological Feature Imaging** — used for spatial mapping and downstream analysis:
+
+  * **Axonal projections:** continuous 3D fluorescence volumes, such as fMOST-GFP axon-tracing data.
+  * **Soma distributions:** microscopic cellular markers and spatial distributions of labeled neurons.
+
+By integrating modality-specific preprocessing, automated 2D-to-3D reconstruction, deep learning–based cross-modal translation, and nonlinear registration, Macaca-Star establishes a unified framework for mapping heterogeneous optical imaging datasets into a common macaque brain space. This design facilitates the integration of high-resolution anatomical and biological information while accommodating tissue distortion, substantial cross-modal appearance differences, and inter-individual anatomical variability.
+
 
 
 # Macaca-Star Pipeline
 
 Macaca-Star provides an integrated processing and mapping framework for different types of macaque brain imaging data.
 
-### 1. Optical image processing
+### 1. Optical Image Processing
 
-Acquired optical images undergo modality-specific preprocessing and 3D reconstruction. The pipeline generates reconstructed **block-face** and **fMOST PI** volumes that preserve anatomical information for subsequent cross-modal registration.
-
-Tracer-related imaging channels are processed separately:
-
-- **fMOST GFP data** are processed for axon tracing.
-- **2D fluorescence sections** are processed for soma localization.
+Acquired optical images undergo modality-specific preprocessing, including intensity correction (with artifact removal), tissue segmentation, and 3D reconstruction. A SAM2-based method is used for block-face tissue segmentation. The resulting **block-face** and **fMOST PI** volumes support cross-modal translation, while **fMOST GFP** and **2D fluorescence sections** support axon tracing and soma localization, respectively.
 
 ### 2. Cross-modal translation
 
@@ -63,18 +66,6 @@ The resulting spatial transformations can be applied to map extracted biological
 
 into the standard NMT space, enabling multimodal integration, cross-subject comparison, and atlas-based analysis.
 
-
-# Cross-modal Translation with CycWave-Mamba
-
-**CycWave-Mamba** is the cross-modal translation module incorporated into Macaca-Star. It supports both 2D and 3D image translation for different imaging scenarios.
-
-For **2D fluorescence sections**, CycWave-Mamba generates block-face-like images that facilitate registration with corresponding block-face images and support subsequent 3D reconstruction.
-
-For **3D optical data**, CycWave-Mamba translates reconstructed fMOST PI and block-face volumes into synthetic T1w MRI-like volumes. These synthetic volumes provide an MRI-compatible anatomical representation for subsequent registration to subject-specific in vivo MRI or directly to the NMT template.
-
-Pretrained model checkpoints are provided in the [`checkpoints`](https://github.com/HNU-BIE/Macaca-Star/tree/main/checkpoints) folder and can be used directly for inference without additional retraining.
-
-
 # System Requirements
 
 Macaca-Star has been installed and tested on:
@@ -101,7 +92,7 @@ or
 conda env create -f enviroment.yml
 ``` 
 
-# Getting Started
+# 🚀 Getting Started
 
 Example scripts and test data are available in the [`example`](https://github.com/HNU-BIE/Macaca-Star/tree/main/example) folder.
 
@@ -114,6 +105,6 @@ The main processing stages include:
 5. Atlas-based analysis
 
 
-# License
+# 📜 License
 
 This work is licensed under a Creative Commons Attribution 4.0 International License.

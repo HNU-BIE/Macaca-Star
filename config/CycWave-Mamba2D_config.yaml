@@ -8,19 +8,17 @@ common:
   data_path: "./Data_folder/train/"     # Train images path
   val_path: "./Data_folder/test/"       # Validation images path
   batch_size: 1                         # Input batch size
-  patch_size: [128, 156, 200]           # Size of the patches extracted from the image
+  patch_size: [512, 512]           # Size of the patches extracted from the image
   input_nc: 1                           # Number of input image channels
   output_nc: 1                          # Number of output image channels
   resample: false                       # Decide whether to rescale images to a new resolution
-  new_resolution: [0.25, 0.25, 0.25]    # New resolution if resampling
+  new_resolution: [1, 1]    # New resolution if resampling
   min_pixel: 0.1                        # Percentage of minimum non-zero pixels in the cropped label
   drop_ratio: 0                         # Probability to drop empty cropped area (0: drop all, 1: accept all)
   workers: 8                            # Number of data loading workers
 
   # Model Architecture
   model: "cycle_gan"                    # Model to use
-  netG: "resnet_9blocks"                # Generator architecture
-  netD: "n_layers"                      # Discriminator architecture
   n_layers_D: 3                         # Only used if netD == 'n_layers'
   ngf: 64                               # Number of generator filters in first conv layer
   ndf: 64                               # Number of discriminator filters in first conv layer
@@ -30,7 +28,7 @@ common:
   init_gain: 0.02                       # Scaling factor for initialization
 
   # System & Experiment
-  name: "fMOSTPI2NMT"                   # Name of the experiment
+  name: "Fluor2Blockface"                   # Name of the experiment
   gpu_ids: [0]                          # GPU IDs: e.g. [0], [0, 1], or [] for CPU
   checkpoints_dir: "./checkpoints"      # Models are saved here
   which_direction: "AtoB"               # AtoB or BtoA

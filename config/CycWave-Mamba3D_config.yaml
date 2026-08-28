@@ -19,8 +19,6 @@ common:
 
   # Model Architecture
   model: "cycle_gan"                    # Model to use
-  netG: "resnet_9blocks"                # Generator architecture
-  netD: "n_layers"                      # Discriminator architecture
   n_layers_D: 3                         # Only used if netD == 'n_layers'
   ngf: 64                               # Number of generator filters in first conv layer
   ndf: 64                               # Number of discriminator filters in first conv layer

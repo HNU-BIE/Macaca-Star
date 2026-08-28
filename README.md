@@ -28,14 +28,9 @@ The [`example`](https://github.com/HNU-BIE/Macaca-Star/tree/main/example) folder
 
 Macaca-Star provides an integrated processing and mapping framework for different types of macaque brain imaging data.
 
-### 1. Optical image processing
+### 1. Optical Image Processing
 
-Acquired optical images undergo modality-specific preprocessing and 3D reconstruction. The pipeline generates reconstructed **block-face** and **fMOST PI** volumes that preserve anatomical information for subsequent cross-modal registration.
-
-Tracer-related imaging channels are processed separately:
-
-- **fMOST GFP data** are processed for axon tracing.
-- **2D fluorescence sections** are processed for soma localization.
+Acquired optical images undergo modality-specific preprocessing, including intensity correction, artifact removal, tissue segmentation, and 3D reconstruction. For block-face images, a SAM2-based segmentation method is incorporated to automatically generate tissue masks. The pipeline reconstructs 3D **block-face** and **fMOST PI** volumes for subsequent cross-modal translation, while **fMOST GFP** and **2D fluorescence sections** are processed for axon tracing and soma localization, respectively.
 
 ### 2. Cross-modal translation
 

@@ -8,7 +8,7 @@ common:
   data_path: "./Data_folder/train/"     # Train images path
   val_path: "./Data_folder/test/"       # Validation images path
   batch_size: 1                         # Input batch size
-  patch_size: [128, 156, 200]           # Size of the patches extracted from the image
+  patch_size: [128, 64, 128]            # Size of the patches extracted from the image
   input_nc: 1                           # Number of input image channels
   output_nc: 1                          # Number of output image channels
   resample: false                       # Decide whether to rescale images to a new resolution
@@ -18,17 +18,15 @@ common:
   workers: 8                            # Number of data loading workers
 
   # Model Architecture
-  model: "cycle_gan"                    # Model to use
-  n_layers_D: 3                         # Only used if netD == 'n_layers'
-  ngf: 64                               # Number of generator filters in first conv layer
-  ndf: 64                               # Number of discriminator filters in first conv layer
+  ngf: 48                               # Number of generator filters in first conv layer
+  ndf: 48                               # Number of discriminator filters in first conv layer
   norm: "instance"                      # Normalization: instance | batch
   no_dropout: true                      # Disable dropout for CycleGAN generator (default: true)
   init_type: "normal"                   # Network initialization: normal | xavier | kaiming | orthogonal
   init_gain: 0.02                       # Scaling factor for initialization
 
   # System & Experiment
-  name: "fMOSTPI2NMT"                   # Name of the experiment
+  name: ""                              # Name of the experiment
   gpu_ids: [0]                          # GPU IDs: e.g. [0], [0, 1], or [] for CPU
   checkpoints_dir: "./checkpoints"      # Models are saved here
   which_direction: "AtoB"               # AtoB or BtoA
@@ -75,7 +73,8 @@ test:
   phase: "test"                         # test
   model: "test"                         # Use test model (generator only)
   which_epoch: "latest"                 # Which epoch to load
-  image: "./Data_folder/test/0.nii.gz"  # Input test image path
-  result: "./Data_folder/test/result_0.nii" # Path to save test result
+  image: ""  # Input test image path
+  result: "" # Path to save test result
+  model_suffix: ""
   stride_inplane: 32                    # Stride size in 2D plane
   stride_layer: 32                      # Stride size in z direction

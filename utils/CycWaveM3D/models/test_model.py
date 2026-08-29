@@ -1,6 +1,6 @@
-from utils.CycleGan_3D.models.base_model import BaseModel
-from utils.CycleGan_3D.models import networks3D
-from utils.CycleGan_3D.models.cycle_gan_model import CycleGANModel
+from utils.CycWaveM3D.models.base_model import BaseModel
+from utils.CycWaveM3D.models import networks3D
+from utils.CycWaveM3D.models.cycle_gan_model import CycleGANModel
 
 
 class TestModel(BaseModel):
@@ -12,11 +12,6 @@ class TestModel(BaseModel):
         assert not is_train, 'TestModel cannot be used in train mode'
         parser = CycleGANModel.modify_commandline_options(parser, is_train=False)
         parser.set_defaults(dataset_mode='single')
-
-        parser.add_argument('--model_suffix', type=str, default='',
-                            help='In checkpoints_dir, [which_epoch]_net_G[model_suffix].pth will'
-                            ' be loaded as the generator of TestModel')
-
         return parser
 
     def initialize(self, opt):
@@ -30,7 +25,7 @@ class TestModel(BaseModel):
         # specify the models you want to save to the disk. The program will call base_model.save_networks and base_model.load_networks
         self.model_names = ['G' + opt.model_suffix]
 
-        self.netG = networks3D.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG,
+        self.netG = networks3D.define_G(opt.input_nc, opt.output_nc, opt.ngf,
                                       opt.norm, not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
 
         # assigns the model to self.netG_[suffix] so that it can be loaded

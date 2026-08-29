@@ -1,12 +1,12 @@
 import yaml
-from utils.NiftiDataset import *
-import utils.NiftiDataset as NiftiDataset_testing
-from models import create_model
+from utils.CycWaveM3D.utils.NiftiDataset import *
+import utils.CycWaveM3D.utils.NiftiDataset as NiftiDataset_testing
+from utils.CycWaveM3D.models import create_model
 import math
 from torch.autograd import Variable
 from tqdm import tqdm
 import datetime
-from utils.config_loader import load_config
+from utils.CycWaveM3D.utils.config_loader import load_config
 
 def from_numpy_to_itk(image_np, image_itk):
     image_np = np.transpose(image_np, (2, 1, 0))
@@ -212,14 +212,13 @@ def inference(model, image_path, result_path, resample, resolution, patch_size_x
 def PI_to_T1_cyclegan():
     YAML_PATH = os.getcwd() + '/config/fMOST_PI_config.yaml'
     fMOST_PI_CONFIG = yaml.safe_load(open(YAML_PATH, 'r'))
-    opt = load_config("config/config.yaml", mode="test")
+    opt = load_config("config/CycWave-Mamba3D_config.yaml", mode="test")
     opt.image = fMOST_PI_CONFIG['output_dir']+'/reg/PI_alignNMT.nii.gz'
-    opt.result =fMOST_PI_CONFIG['output_dir']+'/reg/T1likePI_origin.nii.gz'
-    # opt.image = fMOST_PI_CONFIG['output_dir']+'/gm/pi.nii.gz'
-    # opt.result =fMOST_PI_CONFIG['output_dir']+'/gm/tipi.nii.gz'
+    opt.result =fMOST_PI_CONFIG['output_dir']+'/reg/T1likePI.nii.gz'
     opt.checkpoints_dir = os.getcwd() + '/checkpoints'
     opt.name = 'fMOSTPI2NMT'
-    opt.gpu_ids = ''
+    opt.phase = 'test'
+    opt.model = 'test'
     model = create_model(opt)
     model.setup(opt)
 

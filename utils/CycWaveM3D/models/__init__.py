@@ -1,11 +1,11 @@
 import importlib
-from utils.CycleGan_3D.models.base_model import BaseModel
+from utils.CycWaveM3D.models.base_model import BaseModel
 
 def find_model_using_name(model_name):
     # Given the option --model [modelname],
     # the file "models/modelname_model.py"
     # will be imported.
-    model_filename = "utils.CycleGan_3D.models." + model_name + "_model"
+    model_filename = "utils.CycWaveM3D.models." + model_name + "_model"
     modellib = importlib.import_module(model_filename)
 
     # In the file, the class called ModelNameModel() will

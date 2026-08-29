@@ -1,12 +1,17 @@
-#subject_dir: 'example/fMOST_PI/fMOST_PI.tif'
-subject_dir: '/media/zzb/Raid2_block2/macaque/PI/252718/252718.nii.gz'
-output_dir: '/media/zzb/Raid2_block2/macaque/PI/252718/'
-#output_dir: 'example/fMOST_PI/'
-wholeBrain: True
-LR: R
-spacing: [0.05,0.05,0.05]
-intensity_correction: False
-clahe: True
-atlas_repair_bySeg: True
+# config/fMOST_PI_config.yaml
 
+# ==================== Path Configuration ====================
+subject_dir: 'example/fMOST_PI/PI_alignNMT.nii.gz' # Path to the input subject image (.nii.gz)
+output_dir: 'example/fMOST_PI/'                    # Directory to save output results and intermediate files
 
+# ==================== Brain & Hemisphere Settings ====================
+wholeBrain: False                                  # Whether the image contains the whole brain (False for single hemisphere)
+LR: R                                              # Hemisphere selection: 'L' for Left, 'R' for Right (used when wholeBrain is False)
+
+# ==================== Preprocessing Options ====================
+spacing: [0.05,0.05,0.05]                          # Target/original voxel resolution [x, y, z] in mm
+intensity_correction: False                        # Whether to apply intensity non-uniformity / bias field correction
+clahe: True                                        # Whether to apply Contrast Limited Adaptive Histogram Equalization (CLAHE)
+
+# ==================== Atlas & Registration Refinement ====================
+atlas_repair_bySeg: True                           # Whether to repair/refine atlas alignment based on segmentation results

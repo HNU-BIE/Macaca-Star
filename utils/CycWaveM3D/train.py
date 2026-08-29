@@ -10,9 +10,6 @@ from utils.config_loader import load_config
 def train_cyclegan():
     # -----  Loading the init options -----
     opt = load_config("config/CycWave-Mamba3D_config.yaml")
-    opt['data_path']=os.getcwd()+'/utils/CycleGan_3D/Data_folder/train'
-    opt['val_path'] = os.getcwd() + '/utils/CycleGan_3D/Data_folder/test'
-    opt['checkpoints_dir'] = os.getcwd() + '/utils/CycleGan_3D/checkpoints'
     # -----  Transformation and Augmentation process for the data  -----
     min_pixel = int(opt.min_pixel * ((opt.patch_size[0] * opt.patch_size[1] * opt.patch_size[2]) / 100))
     trainTransforms = [

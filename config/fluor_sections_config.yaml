@@ -1,9 +1,15 @@
-subject_dir: "/media/zzb/Raid2_block2/macaque/Blockface/C060/reg3D/b_recon_oc_scale_alignMRI.nii.gz"
-#output_dir: 'example/fluor_sections'
-output_dir: '/media/zzb/Raid2_block2/macaque/Blockface/C075/'
-wholeBrain: True
-LR: R
-max_dis_centers: 100  # The maximum distance between the center points of corresponding tissues in fluorescence and blockface imaging.
-ex_min_blikef_area: 30 # The minimum tissue area removed in fluorescent sections.
-ex_min_b_area: 30 # The minimum tissue area removed in blockface sections.
-atlas_repair_bySeg: True
+# ==================== Path Configuration ====================
+subject_dir: "example/reg3D/b_recon_oc_scale_alignMRI.nii.gz"  # Path to the input subject image (.nii.gz)
+output_dir: 'example/'                                         # Directory to save output results and intermediate files
+
+# ==================== Brain & Hemisphere Settings ====================
+wholeBrain: True                                               # Whether the image contains the whole brain (False for single hemisphere)
+LR: R                                                          # Hemisphere selection: 'L' for Left, 'R' for Right
+
+# ==================== Section Matching & Area Filtering ====================
+max_dis_centers: 100                                           # Maximum allowable distance between centroids of corresponding tissue regions in fluorescence and blockface imaging
+ex_min_blikef_area: 30                                         # Minimum area threshold (in pixels/voxels) to exclude small artifactual regions in fluorescent sections
+ex_min_b_area: 30                                              # Minimum area threshold (in pixels/voxels) to exclude small artifactual regions in blockface sections
+
+# ==================== Atlas & Registration Refinement ====================
+atlas_repair_bySeg: True                                       # Whether to repair/refine atlas alignment based on segmentation results

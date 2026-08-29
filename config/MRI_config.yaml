@@ -1,10 +1,12 @@
-MRI-guided: True
-#MRI_file: '/media/zzb/Raid2_block2/macaque/PI/194787/MRI/MRI_brain_bc_dn.nii.gz'
-MRI_file: '/media/zzb/Raid2_block2/macaque/PI/252786_y/MRI/MRI_brain_bc_dn_.nii.gz'
-MRI_oc: True
-MRI_transpose: [2,0,1]
-MRI_flip: [0,0,1]
-#MRI_oc_bymetrix: True
-#metrix: [[0,0,1],[-1,0,0],[0,-1,0]]
-rm_background: 231
-rm_neck: 90
+# ==================== MRI Guidance & Path ====================
+MRI-guided: True                                               # Whether to enable MRI-guided registration / synthesis
+MRI_file: 'example/fMOST_PI/MRI/MRI_brain_bc_dn_.nii.gz'       # Path to the reference MRI image (.nii.gz)
+
+# ==================== MRI Orientation & Alignment ====================
+MRI_oc: True                                                   # Whether to perform orientation correction / origin centering on MRI
+MRI_transpose: [2, 0, 1]                                       # Axis permutation order [dim0, dim1, dim2] to match coordinate system
+MRI_flip: [0, 0, 1]                                            # Axis flipping flags [flip_x, flip_y, flip_z] (1: flip, 0: keep)
+
+# ==================== Volume Cropping & Cleaning ====================
+rm_background: 231                                             # Intensity threshold or slice index used to remove background / non-brain regions
+rm_neck: 90                                                    # Slice cutoff or threshold used to remove neck tissue from the volume

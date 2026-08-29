@@ -19,7 +19,7 @@ def fluor_toB_cyclegan():
     fluor_data=fluor.numpy()
     blikef=ants.image_clone(fluor)
     blikef[:,:,:]=0
-    opt = load_config("config/CycWave-Mamba3D_config.yaml", mode="test")
+    opt = load_config("config/CycWave-Mamba2D_config.yaml", mode="test")
     opt.num_threads = 0   # test code only supports num_threads = 0
     opt.batch_size = 1    # test code only supports batch_size = 1
     opt.checkpoints_dir = os.getcwd() + '/checkpoints'

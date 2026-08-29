@@ -1,11 +1,12 @@
 import time
-from utils.CycWaveM2D.options.train_options import load_config
+
 from data import create_dataset
 from models import create_model
+from utils.CycWaveM2D.utils.config_loader import load_config
 from utils.CycWaveM2D.utils.visualizer import Visualizer
 
 if __name__ == '__main__':
-    opt = load_config("config/CycWave-Mamba3D_config.yaml")
+    opt = load_config("config/CycWave-Mamba2D_config.yaml")
     dataset = create_dataset(opt)  # create a dataset given opt.dataset_mode and other options
     dataset_size = len(dataset)    # get the number of images in the dataset.
     print('The number of training images = %d' % dataset_size)

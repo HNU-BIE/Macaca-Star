@@ -108,7 +108,7 @@ Execute the corresponding script
 * **For 3D fMOST-PI data:**  
 python fMOST_PI.py
 
-* ** fMOST_PI/ — contains the processed fMOST-PI data and intermediate results generated during the fMOST-PI processing workflow.
+* fMOST_PI/ — contains the processed fMOST-PI data and intermediate results generated during the fMOST-PI processing workflow.
 MRI/ — contains the processed MRI data and intermediate results generated during MRI preprocessing.
 reg/ — contains the data required for anatomical registration and the resulting registration outputs.
 atlas/ — contains the final registration results mapped to the target macaque brain atlas.

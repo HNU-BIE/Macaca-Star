@@ -105,7 +105,7 @@ Example configuration files are provided for different processing tasks:
 ## **Running the Pipeline**  
 Execute the corresponding script  
 
-* **For 3D fMOST-PI data:**  
+**For 3D fMOST-PI data:**  
 python fMOST_PI.py
 
 **Output Structure**

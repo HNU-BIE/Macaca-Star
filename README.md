@@ -164,7 +164,7 @@ python fluoresence_sections.py
 
 * **`blockface/`** — contains the processed block-face data and the results of 3D reconstruction.
 * **`fluor/`** — contains the processed 2D fluorescence sections and the results of cross-modal translation.
-* **`MRI/`** — contains the processed MRI data and intermediate results.
+* **`MRI/`** — contains the processed MRI data and intermediate results generated during MRI preprocessing.
 * **`reg2D/`** — contains the reconstructed fluorescence section data resulting from 2D registration.
 * **`reg3D/`** — contains the data required for 3D anatomical registration and the resulting registration outputs.
 

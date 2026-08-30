@@ -137,7 +137,41 @@ After running `fMOST_PI.py`, Macaca-Star generates three main directories contai
 
 ### For 2D fluorescence section data:  
 python fluoresence_sections.py  
-  
+
+**Output Structure**
+
+```text
+<output_dir>/
+├── blockface/
+│   ├── ...
+│   └── ...
+├── fluor/
+│   ├── ...
+│   └── ...
+├── MRI/
+│   ├── ...
+│   └── ...
+├── reg2D/
+│   ├── ...
+│   └── ...
+└── reg3D/
+    ├── atlas/
+    │   └── ...
+    └── xfms/
+        ├── ...
+        └── ...
+```
+
+* **`blockface/`** — contains the processed block-face data and the results of 3D reconstruction.
+* **`fluor/`** — contains the processed 2D fluorescence sections and the results of cross-modal translation.
+* **`MRI/`** — contains the processed MRI data and intermediate results.
+* **`reg2D/`** — contains the reconstructed fluorescence section data used for 2D registration.
+* **`reg3D/`** — contains the data required for 3D anatomical registration and the resulting registration outputs.
+
+  * **`atlas/`** — contains various registration results and outputs from the registration workflow.
+  * **`xfms/`** — contains the transformation files generated during registration.
+
+
 Each script automatically loads its corresponding YAML configuration file and executes the complete processing workflow end-to-end according to the specified settings. Individual processing modules can also be executed independently when needed, providing flexibility for users to run specific steps or customize the overall workflow.
 
 # 📜 License

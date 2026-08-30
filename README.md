@@ -108,12 +108,33 @@ Execute the corresponding script
 * **For 3D fMOST-PI data:**  
 python fMOST_PI.py
 
-  output/ ├── fMOST_PI/ │ ├── ... │ └── ... ├── MRI/ │ ├── ... │ └── ... └── reg/ ├── atlas/ │ └── ... └── xfms/ ├── ... └── ...
-  fMOST_PI: contains the processed fMOST-PI data and intermediate results generated during the fMOST-PI processing workflow.  
-  MRI: contains the processed MRI data and intermediate results generated during MRI preprocessing.  
-  reg: contains the data required for anatomical registration and the resulting registration outputs.  
-  atlas: contains the final registration results mapped to the target macaque brain atlas.  
-  xfms: contains the transformation files generated during registration.  
+### Output Structure
+
+After running `fMOST_PI.py`, Macaca-Star generates three main directories containing the processed data, intermediate results, and registration outputs:
+
+```text
+<output_dir>/
+├── fMOST_PI/
+│   ├── ...
+│   └── ...
+├── MRI/
+│   ├── ...
+│   └── ...
+└── reg/
+    ├── atlas/
+    │   └── ...
+    └── xfms/
+        ├── ...
+        └── ...
+```
+
+* **`fMOST_PI/`** — contains the processed fMOST-PI data and intermediate results generated during the fMOST-PI processing workflow.
+* **`MRI/`** — contains the processed MRI data and intermediate results generated during MRI preprocessing.
+* **`reg/`** — contains the data required for anatomical registration and the resulting registration outputs.
+
+  * **`atlas/`** — contains the final registration results mapped to the target macaque brain atlas.
+  * **`xfms/`** — contains the transformation files generated during registration, including deformation fields and affine transformation matrices.
+
 * **For 2D fluorescence section data:**  
 python fluoresence_sections.py  
   

@@ -108,6 +108,7 @@ Execute the corresponding script
 * **For 3D fMOST-PI data:**  
 python fMOST_PI.py
 
+  output/ ├── fMOST_PI/ │ ├── ... │ └── ... ├── MRI/ │ ├── ... │ └── ... └── reg/ ├── atlas/ │ └── ... └── xfms/ ├── ... └── ...
   fMOST_PI: contains the processed fMOST-PI data and intermediate results generated during the fMOST-PI processing workflow.  
   MRI: contains the processed MRI data and intermediate results generated during MRI preprocessing.  
   reg: contains the data required for anatomical registration and the resulting registration outputs.  

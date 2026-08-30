@@ -108,7 +108,7 @@ Execute the corresponding script
 **For 3D fMOST-PI data:**  
 python fMOST_PI.py
 
-* **Output Structure**
+**Output Structure**
 
 After running `fMOST_PI.py`, Macaca-Star generates three main directories containing the processed data, intermediate results, and registration outputs:
 
@@ -135,7 +135,7 @@ After running `fMOST_PI.py`, Macaca-Star generates three main directories contai
   * **`atlas/`** — contains the final registration results mapped to the target macaque brain atlas.
   * **`xfms/`** — contains the transformation files generated during registration.
 
-* **For 2D fluorescence section data:**  
+**For 2D fluorescence section data:**  
 python fluoresence_sections.py  
   
 Each script automatically loads its corresponding YAML configuration file and executes the complete processing workflow end-to-end according to the specified settings. Individual processing modules can also be executed independently when needed, providing flexibility for users to run specific steps or customize the overall workflow.

@@ -133,7 +133,7 @@ After running `fMOST_PI.py`, Macaca-Star generates three main directories contai
 * **`reg/`** — contains the data required for anatomical registration and the resulting registration outputs.
 
   * **`atlas/`** — contains the final registration results mapped to the target macaque brain atlas.
-  * **`xfms/`** — contains the transformation files generated during registration, including deformation fields and affine transformation matrices.
+  * **`xfms/`** — contains the transformation files generated during registration.
 
 * **For 2D fluorescence section data:**  
 python fluoresence_sections.py  

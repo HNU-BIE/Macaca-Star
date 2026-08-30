@@ -108,7 +108,7 @@ Execute the corresponding script
 * **For 3D fMOST-PI data:**  
 python fMOST_PI.py
 
-### **Output Structure**
+**Output Structure**
 
 After running `fMOST_PI.py`, Macaca-Star generates three main directories containing the processed data, intermediate results, and registration outputs:
 

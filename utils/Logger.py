@@ -26,7 +26,7 @@ def init_logger(name='macaque_pipeline'):
         log_colors=log_colors_config
     )
 
-    file_handler = logging.FileHandler(config['output_dir']+'/Macaca-Star.log', mode='w', encoding='utf8')
+    file_handler = logging.FileHandler(config['output_dir']+'/'+name+'.log', mode='w', encoding='utf8')
     file_handler.setLevel(level=logging.DEBUG)
     file_handler.setFormatter(formatter)
     stream_handler = logging.StreamHandler()

@@ -26,8 +26,8 @@ MRI_CONFIG = yaml.safe_load(open(MRI_YAML_PATH, 'r'))
 def tif_to_nii():
     logger = loggerz.get_logger()
     logger.info('tif to nii.gz')
-    # tif_file = tifffile.imread(fMOST_PI_CONFIG['subject_dir'])
-    tif_file = ants.image_read(fMOST_PI_CONFIG['subject_dir']).numpy()
+    tif_file = tifffile.imread(fMOST_PI_CONFIG['subject_dir'])
+    # tif_file = ants.image_read(fMOST_PI_CONFIG['subject_dir']).numpy()
     nmt = ants.image_read('template/NMT/NMT_brain/NMT_v2.0_sym_SS.nii.gz')
     tmp = tif_file
     tmp=np.flip(tmp,2)
@@ -116,9 +116,8 @@ def intensity_c():
     logger.info('Intensity correction')
     img = ants.image_read(fMOST_PI_CONFIG['output_dir'] + '/fMOST_PI/PI_8bit_rm_dn.nii.gz')
     img=ants.iMath_normalize(img)*255
-    # img=ants.iMath_truncate_intensity(img,0.001,0.98)
     img_data=img.numpy()
-    if fMOST_PI_CONFIG['intensity_correction']:
+    if not fMOST_PI_CONFIG['intensity_correction']:
         n = 60
         tmp = img.numpy() + 2.0
         matrix = np.where(tmp < n)
@@ -133,7 +132,7 @@ def intensity_c():
         ants.image_write(tmp_morm, fMOST_PI_CONFIG['output_dir'] + '/fMOST_PI/PI_8bit_rm_dn_ic.nii.gz')
     else:
         print('read mask')
-        mask = ants.image_read(fMOST_PI_CONFIG['output_dir'] + '/fMOST_PI/atlas/PI_mask_fillhole_0.05.nii.gz.seg.nrrd')
+        mask = ants.image_read(fMOST_PI_CONFIG['output_dir'] + '/fMOST_PI/atlas/PI_mask_0.05mm.nii.gz')
         mask = ants.copy_image_info(img, mask)
         mask_data = mask.numpy()
         mask_data[mask_data > 0] = 1
@@ -201,47 +200,15 @@ def PI_alignNMT():
 def correct_T1like():
     logger = loggerz.get_logger()
     logger.info('correct T1like')
-    img=ants.image_read(fMOST_PI_CONFIG['output_dir']+'/reg/PI_alignNMT_.nii.gz')
-    t1like = ants.image_read(fMOST_PI_CONFIG['output_dir'] + '/reg/T1likePIw.nii.gz')
+    img=ants.image_read(fMOST_PI_CONFIG['output_dir']+'/reg/PI_alignNMT.nii.gz')
+    t1like = ants.image_read(fMOST_PI_CONFIG['output_dir'] + '/reg/T1likePI.nii.gz')
     if not os.path.exists(fMOST_PI_CONFIG['output_dir'] + '/reg/atlas/PI_alignNMT_mask.nii.gz'):
-        mask=ants.get_mask(img,10)
+        mask=ants.get_mask(img,1)
         mask.to_file(fMOST_PI_CONFIG['output_dir'] + '/reg/atlas/PI_alignNMT_mask.nii.gz')
     else:
         mask=ants.image_read(fMOST_PI_CONFIG['output_dir'] + '/reg/atlas/PI_alignNMT_mask.nii.gz')
-
-    img = ants.mask_image(img, mask)
-    pi_inv=ants.new_image_like(t1like,t1like.numpy())
-    pi_data=img.numpy()[:,:,:]
-    # mask_seg = ants.image_read(fMOST_PI_CONFIG['output_dir'] + '/reg/atlas/Seg_inPI.nii.gz')
-    tmp = ants.image_read('template/NMT/NMT_brain/NMT_v2.0_sym_SS.nii.gz')
-    seg = ants.image_read('template/NMT/NMT_brain/NMT_v2.0_sym_segmentation.nii.gz')
-    tmp = crop_brain(tmp)
-    seg = crop_brain(seg)
-    t=ants.registration(tmp,t1like,'SyN')
-    mask_seg=ants.apply_transforms(t1like,seg,t['invtransforms'],'multiLabel')
-    mask_seg.to_file(fMOST_PI_CONFIG['output_dir'] + '/reg/atlas/Seg_inPI.nii.gz')
-    mask_csf=ants.mask_image(mask_seg,mask_seg,[3,4,5])
-    mask_csf=ants.morphology(mask_csf,'dilate',3)
-    mask_data=mask_csf.numpy()
-    mask_data[mask_data>0]=1
-    mask_seg[:,:,:]=mask_data
-    pi_data_inv=(np.max(pi_data)-pi_data)* mask_seg[:, :,:].numpy()
-    pi_data_inv[pi_data_inv<0]=0
-    pi_inv[:, :, :] = pi_data_inv
-    pi_inv=ants.iMath_truncate_intensity(pi_inv,0.01,0.99)
-    pi_inv=ants.denoise_image(pi_inv)
-    pi_inv.to_file(fMOST_PI_CONFIG['output_dir'] + '/reg/atlas/pi_inv.nii.gz')
-    # total_sigma 0.5
-    t1like_sub=ants.mask_image(t1like,mask_seg)
-    t = ants.registration(pi_inv, t1like_sub, 'SyN',syn_metric='CC',reg_iterations=(40,20,10),flow_sigma=3,total_sigma=0.6,syn_sampling=4)
-    t1like_=ants.apply_transforms(img,t1like,t['fwdtransforms'],'bSpline')
-    # t1like_data=t1like_.numpy()
-    # tf_augtmp = normalization(t1like_data.copy() * (1+normalization(pi_data_inv)*0.2) ) * 255
-    # tf_augtmp=t1like_data
-    # t1like_[:, :, :]=tf_augtmp.copy()
-    # mask=ants.morphology(mask,'close',1)
-    # t1like_ = ants.mask_image(t1like_, mask)
-    t1like_.to_file(fMOST_PI_CONFIG['output_dir']+'/reg/T1likePI_cw.nii.gz')
+    t1like_ = ants.mask_image(t1like, mask)
+    t1like_.to_file(fMOST_PI_CONFIG['output_dir']+'/reg/T1likePI_c.nii.gz')
 
 def mergePI():
     logger = loggerz.get_logger()
@@ -271,24 +238,39 @@ def mergePI():
     t1like.to_file(path+'/reg/T1likePI_c_merge.nii.gz')
 
 def fMOST_PI_3Dreg():
+    """
+    Perform 3D anatomical registration of fMOST-PI to the NMT atlas space.
+
+    Dynamically executes either MRI-guided registration (via subject-specific T1w MRI)
+    or MRI-free registration (direct template alignment) based on configuration,
+    while monitoring runtime memory consumption.
+    """
+    # 1. Initialize pipeline logger
     logger = loggerz.get_logger()
     logger.info('fMOST PI register to NMT')
-    if MRI_CONFIG['MRI-guided']:
-        logger.warning('MRI-guided registration')
-        memory_usage_data=memory_usage(atlas_reg_ByT1w,interval=5.0)
-        # memory_usage_data = memory_usage(atlas_reg_ByT1w_s, interval=5.0)
-        # memory_usage_data = memory_usage(atlas_reg_ByT1w_v2, interval=5.0)
-        average_memory_usage = sum(memory_usage_data) / len(memory_usage_data)
-        # atlas_reg_ByT1w_v2()
 
+    if MRI_CONFIG['MRI-guided']:
+        # 2. Branch: MRI-guided registration pipeline
+        logger.warning('MRI-guided registration')
+
+        # Profile memory usage during T1w-guided atlas registration (sample every 5.0s)
+        memory_usage_data=memory_usage(atlas_reg_ByT1w,interval=5.0)
+
+        # Calculate and log average memory consumption
+        average_memory_usage = sum(memory_usage_data) / len(memory_usage_data)
         print(f"average_memory : {average_memory_usage:.2f}MB")
         logger.warning(f"average_memory : {average_memory_usage:.2f}MB")
         logger.warning('MRI-guided registration end')
+
     else:
+        # 3. Branch: MRI-free registration pipeline (direct alignment without subject MRI)
         logger.warning('no MRI-guided registration')
+
+        # Profile memory usage during direct (MRI-free) atlas registration
         memory_usage_data=memory_usage(atlas_reg_noT1w,interval=5.0)
+
+        # Calculate and log average memory consumption
         average_memory_usage = sum(memory_usage_data) / len(memory_usage_data)
-        # atlas_reg_noT1w_1()
         print(f"average_memory : {average_memory_usage:.2f}MB")
         logger.warning(f"average_memory : {average_memory_usage:.2f}MB")
         logger.warning('MRI-guided registration end')
@@ -296,7 +278,7 @@ def fMOST_PI_3Dreg():
 def repair_atlas():
     logger = loggerz.get_logger()
     logger.info('repair atlas')
-    method='Method A (MIw)'
+    method=''
     pi=ants.image_read(fMOST_PI_CONFIG['output_dir']+'/reg/PI_alignNMT_.nii.gz')
     tipi=ants.image_read(fMOST_PI_CONFIG['output_dir']+'/reg/T1likePIw.nii.gz')
     tmp=ants.image_read(fMOST_PI_CONFIG['output_dir']+'/reg/'+method+'/atlas/TMP_inT1PI.nii.gz')

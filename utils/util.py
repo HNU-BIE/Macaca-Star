@@ -338,9 +338,6 @@ def smoothing_base_bezier(date_x, date_y, k=0.5, inserted=10, closed=False):
     return out.T[0], out.T[1]
 
 def crop_brain(img,LR=None):
-    if not LR is None:
-        fMOST_PI_CONFIG['LR']=LR
-        fMOST_PI_CONFIG['wholeBrain']=False
     if not fMOST_PI_CONFIG['wholeBrain']:
         if fMOST_PI_CONFIG['LR'] == 'L':
             img[int(img.shape[0] / 2):img.shape[0], 0:img.shape[1], 0:img.shape[2]] = 0
@@ -368,71 +365,144 @@ def reset_img(imglist,fix=None):
 
 
 def atlas_reg_ByT1w():
-    method = 'Method A (MIw)'
+    """
+    Perform MRI-guided 3D non-linear registration (SyN) between standard NMT template,
+    subject-specific in vivo T1w MRI, and synthetic T1-like PI data.
+
+    Workflow:
+      1. Prepare output directories and load/mask images and atlases.
+      2. Reg Iter 1: Register NMT template to in vivo T1w MRI space.
+      3. Reg Iter 2: Register synthetic T1-like PI to in vivo T1w MRI space.
+      4. Reg Iter 3: Refine non-linear deformation between warped NMT and warped T1-like PI.
+      5. Invert and compose transforms to map template/atlas into native PI space.
+    """
+    method = ''
+    # 2. Hierarchical atlas level setting
+    atlas_level=6    # Hierarchical parcellation level for CHARM (cortical) and SARM (subcortical) atlases
+
+    # Ensure required output subdirectories exist (atlas/ and xfms/)
     if not os.path.exists(fMOST_PI_CONFIG['output_dir']+'/reg/'+method):
         os.mkdir(fMOST_PI_CONFIG['output_dir']+'/reg/'+method)
     if not os.path.exists(fMOST_PI_CONFIG['output_dir']+'/reg/'+method+'/atlas/'):
         os.mkdir(fMOST_PI_CONFIG['output_dir']+'/reg/'+method+'/atlas/')
     if not os.path.exists(fMOST_PI_CONFIG['output_dir']+'/reg/'+method+'/xfms/'):
         os.mkdir(fMOST_PI_CONFIG['output_dir']+'/reg/'+method+'/xfms/')
+
+    # Load subject-specific in vivo MRI, synthetic T1-like PI, and PI volumes
     t1 = ants.image_read(fMOST_PI_CONFIG['output_dir'] + '/MRI/MRI_brain_bc_dn_.nii.gz')
     tsfer = ants.image_read(fMOST_PI_CONFIG['output_dir']+'/reg/T1likePI_wm.nii.gz')
     pi=ants.image_read(fMOST_PI_CONFIG['output_dir']+'/reg/PI_alignNMT_.nii.gz')
-    mask = ants.image_read(fMOST_PI_CONFIG['output_dir'] + '/reg/atlas/PI_alignNMT_mask.nii.gz')
-    pi = ants.mask_image(pi, mask)
-    tsfer = ants.mask_image(tsfer, mask)
+
+    # Check if the pre-aligned brain foreground mask exists
+    if os.path.exists(fMOST_PI_CONFIG['output_dir'] + '/reg/atlas/PI_alignNMT_mask.nii.gz'):
+        # Load the brain foreground mask
+        mask = ants.image_read(fMOST_PI_CONFIG['output_dir'] + '/reg/atlas/PI_alignNMT_mask.nii.gz')
+        # Apply mask to optical PI and synthetic T1-like volumes to remove non-brain background
+        pi = ants.mask_image(pi, mask)
+        tsfer = ants.mask_image(tsfer, mask)
+
+    # Load standard NMT template and corresponding hierarchical atlases (CHARM & SARM)
     tmp_origin = ants.image_read('template/NMT/NMT_brain/NMT_v2.0_sym_SS.nii.gz')
     tmp_mask = ants.image_read('template/NMT/NMT_brain/NMT_v2.0_sym_brainmask.nii.gz')
     tmp_origin=ants.mask_image(tmp_origin, tmp_mask)
+
     atlas2 = ants.image_read('template/NMT/NMT_brain/NMT_v2.0_sym_segmentation.nii.gz')
-    # atlas = ants.image_read('template/NMT/NMT_brain/CHARM_6_in_NMT_v2.0_sym_D99.nii.gz')
-    # atlas4 = ants.image_read('template/NMT/NMT_brain/SARM_6_in_NMT_v2.0_sym.nii.gz')
-    atlas=ants.image_read('template/NMT/NMT_brain/level4/CHARM_4_in_NMT_v2.0_sym.nii.gz')
-    atlas4=ants.image_read('template/NMT/NMT_brain/level4/SARM_4_in_NMT_v2.0_sym.nii.gz')
+    # Load CHARM (Cortical Hierarchy Atlas of the Rhesus Macaque) at specified level
+    atlas=ants.image_read('template/NMT/NMT_brain/level'+str(atlas_level)+'/CHARM_'+str(atlas_level)+'_in_NMT_v2.0_sym.nii.gz')
+    # Load SARM (Subcortical Atlas of the Rhesus Macaque) at specified level
+    atlas4=ants.image_read('template/NMT/NMT_brain/level'+str(atlas_level)+'/SARM_'+str(atlas_level)+'_in_NMT_v2.0_sym.nii.gz')
+
+    # Extract and remove vasculature (segmentation label 5) from the template
     atlas2_=ants.mask_image(atlas2,atlas2,5)
     atlas2_data=atlas2_.numpy()
     atlas2_data[atlas2_data>0]=1
     atlas2_[:,:,:]=atlas2_data
     tmp_origin=tmp_origin-ants.mask_image(tmp_origin, atlas2_)
-    tmp_origin.to_file(fMOST_PI_CONFIG['output_dir'] + '/reg/'+method+'/atlas/NMT.nii.gz')
-    atlas.to_file(fMOST_PI_CONFIG['output_dir'] + '/reg/'+method+'/atlas/D99.nii.gz')
+
+    # Crop to target hemisphere (Left / Right) or whole brain, and standardize spatial origins
     tmp_origin = crop_brain(tmp_origin)
     atlas=crop_brain(atlas)
     atlas2=crop_brain(atlas2)
     atlas4 = crop_brain(atlas4)
     t1,tsfer,pi,tmp,atlas,atlas2,atlas4=reset_img([t1,tsfer,pi,tmp_origin,atlas,atlas2,atlas4])
+
+    # =========================================================================
+    # Reg Iter 1: Deformable registration from NMT Template -> In vivo T1w MRI
+    # =========================================================================
     print('Reg iter1: T1like in MRI <--> NMT')
     start_time = time.time()
-    # syn_sampling 4  total_sigma 0.5 reg_iterations=(2400,1200,40)
-    tf1 = ants.registration(t1,tmp, 'SyN',syn_metric='mattes',syn_sampling=32,grad_step=0.3,aff_metric='GC',
-                            reg_iterations=(2400,1200,40),flow_sigma=3,total_sigma=0.1,outprefix=fMOST_PI_CONFIG['output_dir']+'/reg/'+method+'/xfms/atlas_NMTtoT1w_',verbose=False)
+    tf1 = ants.registration(
+        fixed=t1,
+        moving=tmp,
+        type_of_transform='SyN',
+        syn_metric='CC',
+        syn_sampling=4,
+        grad_step=0.2,
+        aff_metric='GC',
+        reg_iterations=(1200, 1200, 40),
+        flow_sigma=3,
+        total_sigma=0.5,
+        outprefix=fMOST_PI_CONFIG['output_dir'] + '/reg/' + method + '/xfms/atlas_NMTtoT1w_',
+        verbose=False
+    )
+    # Save NMT template warped to T1w MRI space
     img__ = ants.copy_image_info(tmp_origin, tf1['warpedmovout'])
-    img__.to_file(fMOST_PI_CONFIG['output_dir'] + '/reg/'+method+'/atlas/TMP_inT1w.nii.gz')
+    img__.to_file(fMOST_PI_CONFIG['output_dir'] + '/reg/' + method + '/atlas/TMP_inT1w.nii.gz')
     tmp_ = ants.apply_transforms(t1,tmp, tf1['fwdtransforms'],'bSpline' )
+
+    # =========================================================================
+    # Reg Iter 2: Deformable registration from Synthetic T1-like PI -> In vivo T1w MRI
+    # =========================================================================
     print('Reg iter2: T1like <--> MRI')
-    # syn_sampling 4  total_sigma 0.7 reg_iterations=(1200,1200,40)
-    tf3 = ants.registration(t1,tsfer, 'SyN',
-                            syn_metric='mattes',syn_sampling=32,grad_step=0.3,aff_metric='GC',
-                            reg_iterations=(1200,1200,40),flow_sigma=3,total_sigma=0.1,outprefix=fMOST_PI_CONFIG['output_dir']+'/reg/'+method+'/xfms/atlas_PItoT1w_',verbose=False)
+    tf3 = ants.registration(
+        fixed=t1,
+        moving=tsfer,
+        type_of_transform='SyN',
+        syn_metric='CC',
+        syn_sampling=4,
+        grad_step=0.2,
+        aff_metric='GC',
+        reg_iterations=(1200, 1200, 40),
+        flow_sigma=3,
+        total_sigma=0.5,
+        outprefix=fMOST_PI_CONFIG['output_dir'] + '/reg/' + method + '/xfms/atlas_PItoT1w_',
+        verbose=False
+    )
+    # Save synthetic T1-like PI warped to T1w MRI space
     img__ = ants.copy_image_info(tmp_origin, tf3['warpedmovout'])
     img__.to_file(fMOST_PI_CONFIG['output_dir'] + '/reg/'+method+'/atlas/T1PI_inT1w.nii.gz')
     tsfer_ = ants.apply_transforms(t1,tsfer, tf3['fwdtransforms'], 'bSpline')
+
+    # =========================================================================
+    # Reg Iter 3: Non-linear refinement between warped T1-like PI and warped NMT
+    # =========================================================================
     print('Reg iter3: T1like_ <--> NMT_')
-    # syn_sampling 2  total_sigma 0.7 reg_iterations=(2400,1200,40)
-    tf2 = ants.registration(tsfer_,tmp_, 'SyN',
-                            syn_metric='mattes',syn_sampling=32,grad_step=0.2,
-                            reg_iterations=(2400,1200,40),flow_sigma=3,total_sigma=0.1,outprefix=fMOST_PI_CONFIG['output_dir']+'/reg/'+method+'/xfms/atlas_T1toGFP_',verbose=False)
+    tf2 = ants.registration(
+        fixed=tsfer_,
+        moving=tmp_,
+        type_of_transform='SyN',
+        syn_metric='CC',
+        syn_sampling=4,
+        grad_step=0.2,
+        reg_iterations=(1200, 1200, 40),
+        flow_sigma=3,
+        total_sigma=0.5,
+        outprefix=fMOST_PI_CONFIG['output_dir'] + '/reg/' + method + '/xfms/atlas_T1toGFP_',
+        verbose=False
+    )
     end_time = time.time()
+
+    # 5. Invert and compose transforms to map NMT template back into native T1-like PI space
     tmp_=tf2['warpedmovout']
     tmp_ = ants.apply_transforms(tsfer, tmp_, tf3['invtransforms'], 'bSpline')
     img__ = ants.copy_image_info(tmp_origin, tmp_)
     img__.to_file(fMOST_PI_CONFIG['output_dir'] + '/reg/'+method+'/atlas/TMP_inT1PI.nii.gz')
     ####################################################################
     atlas_ = ants.apply_transforms(t1, atlas, tf1['fwdtransforms'], 'multiLabel')
-    atlas_.to_file(fMOST_PI_CONFIG['output_dir'] + '/reg/'+method+'/atlas/Charm4_inT1w.nii.gz')
+    atlas_.to_file(fMOST_PI_CONFIG['output_dir'] + '/reg/'+method+'/atlas/CHARM'+str(atlas_level)+'_inT1w.nii.gz')
     atlas_ = ants.apply_transforms(tsfer_, atlas_, tf2['fwdtransforms'], 'multiLabel')
     atlas_ = ants.apply_transforms(tsfer, atlas_, tf3['invtransforms'], 'multiLabel')
-    atlas_.to_file(fMOST_PI_CONFIG['output_dir'] + '/reg/'+method+'/atlas/Charm4_inPI.nii.gz')
+    atlas_.to_file(fMOST_PI_CONFIG['output_dir'] + '/reg/'+method+'/atlas/CHARM'+str(atlas_level)+'_inPI.nii.gz')
 
     atlas2_ = ants.apply_transforms(t1, atlas2, tf1['fwdtransforms'], 'multiLabel')
     atlas2_.to_file(fMOST_PI_CONFIG['output_dir'] + '/reg/'+method+'/atlas/Seg_inT1w.nii.gz')
@@ -441,17 +511,17 @@ def atlas_reg_ByT1w():
     atlas2_.to_file(fMOST_PI_CONFIG['output_dir'] + '/reg/'+method+'/atlas/Seg_inPI.nii.gz')
 
     atlas4_ = ants.apply_transforms(t1, atlas4, tf1['fwdtransforms'], 'multiLabel')
-    atlas4_.to_file(fMOST_PI_CONFIG['output_dir'] + '/reg/'+method+'/atlas/SARM4_inT1w.nii.gz')
+    atlas4_.to_file(fMOST_PI_CONFIG['output_dir'] + '/reg/'+method+'/atlas/SARM'+str(atlas_level)+'_inT1w.nii.gz')
     atlas4_ = ants.apply_transforms(tsfer_, atlas4_, tf2['fwdtransforms'], 'multiLabel')
     atlas4_ = ants.apply_transforms(tsfer, atlas4_, tf3['invtransforms'], 'multiLabel')
-    atlas4_.to_file(fMOST_PI_CONFIG['output_dir'] + '/reg/'+method+'/atlas/SARM4_inPI.nii.gz')
+    atlas4_.to_file(fMOST_PI_CONFIG['output_dir'] + '/reg/'+method+'/atlas/SARM'+str(atlas_level)+'_inPI.nii.gz')
 
     img_ = ants.apply_transforms(tmp, t1, tf1['invtransforms'], 'bSpline')
     img_=ants.copy_image_info(tmp_origin,img_)
     img_.to_file(fMOST_PI_CONFIG['output_dir'] + '/reg/'+method+'/atlas/T1w_inNMT.nii.gz')
 
     img_ = ants.apply_transforms(t1, tsfer, tf3['fwdtransforms'], 'bSpline')
-    img__ = ants.copy_image_info(tmp_origin, ants.image_clone(img_))
+    img__ = ants.copy_image_info(tmp_origin, img_)
     img__.to_file(fMOST_PI_CONFIG['output_dir'] + '/reg/'+method+'/atlas/T1PI_inT1w.nii.gz')
     img_ = ants.apply_transforms(t1, img_, tf2['invtransforms'], 'bSpline')
     img_ = ants.apply_transforms(tmp, img_, tf1['invtransforms'], 'bSpline')
@@ -459,7 +529,7 @@ def atlas_reg_ByT1w():
     img__.to_file(fMOST_PI_CONFIG['output_dir'] + '/reg/'+method+'/atlas/T1PI_inNMT.nii.gz')
 
     pi_ = ants.apply_transforms(t1, pi, tf3['fwdtransforms'], 'bSpline')
-    pi__ = ants.copy_image_info(tmp_origin, ants.image_clone(pi_))
+    pi__ = ants.copy_image_info(tmp_origin, pi_)
     pi__.to_file(fMOST_PI_CONFIG['output_dir'] + '/reg/'+method+'/atlas/PI_inT1w.nii.gz')
     pi_ = ants.apply_transforms(t1, pi_, tf2['invtransforms'], 'bSpline')
     pi_ = ants.apply_transforms(tmp, pi_, tf1['invtransforms'], 'bSpline')

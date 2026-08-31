@@ -24,4 +24,4 @@ def MRI_preproc(type):
             logger.error('No MRI image; Next step to run PI <--> NMT')
         logger.info('END MRI<-->NMT')
     else:
-        logger.WARNING('no MRI-guided registration')
+        logger.warning('no MRI-guided registration')

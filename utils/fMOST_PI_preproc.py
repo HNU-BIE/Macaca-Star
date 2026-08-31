@@ -4,7 +4,6 @@
 @Project ：Macaca-Star
 @File    ：fMOST_PI_preproc.py
 @Author  ：Zauber
-@Date    ：2024/6/3
 """
 import os
 import numpy as np
@@ -13,8 +12,7 @@ import tifffile
 import ants
 import yaml
 import albumentations as A
-from utils.util import horizontal, sagittal, crop_brain, log, atlas_reg_ByT1w, atlas_reg_noT1w, reset_img, \
-    atlas_reg_noT1w_1, atlas_reg_ByT1w_v2, atlas_reg_ByT1w_s
+from utils.util import horizontal, sagittal, crop_brain, log, atlas_reg_ByT1w, atlas_reg_noT1w, reset_img
 from utils.util_fluor import normalization
 from memory_profiler import memory_usage
 
@@ -152,14 +150,12 @@ def clahe_image():
     logger = loggerz.get_logger()
     logger.info('Image Enhancement')
     pi_origin = ants.image_read(fMOST_PI_CONFIG['output_dir'] + '/fMOST_PI/PI_8bit_rm_dn_ic.nii.gz')
-    mask=ants.image_read(fMOST_PI_CONFIG['output_dir'] + '/fMOST_PI/atlas/PI_mask_fillhole_0.05.nii.gz.seg.nrrd')
+    mask=ants.image_read(fMOST_PI_CONFIG['output_dir'] + '/fMOST_PI/atlas/PI_mask_0.05mm.nii.gz')
     pi_origin=ants.mask_image(pi_origin, mask)
     if fMOST_PI_CONFIG['clahe']:
         logger.info('START PI clahe')
         # 8 8
         CLAHE = A.CLAHE(tile_grid_size=(10,10), always_apply=True)
-        # spacing = pi.spacing
-        # direction = pi.direction
         pi = pi_origin.numpy()
         space = np.max(pi) - np.min(pi)
         norm = (pi - np.min(pi)) * 255 / space
@@ -175,67 +171,98 @@ def clahe_image():
 
 
 def PI_alignNMT():
+    """
+    Perform initial spatial alignment (Similarity registration) from fMOST-PI volume
+    to the standard NMT template space.
+
+    Workflow:
+      1. Load preprocessed fMOST PI volume and its high-resolution mask.
+      2. Downsample PI volume and mask to isotropic resolution (0.2 mm) for efficient alignment.
+      3. Crop NMT template to target hemisphere/whole brain and standardize origins.
+      4. Perform Similarity registration (rigid + isotropic scaling) to align PI to NMT.
+      5. Apply forward transforms to both PI image and mask.
+      6. Truncate intensity outliers (1% - 99%), apply Gaussian smoothing, and perform
+         N4 bias field correction to generate normalized aligned outputs.
+    """
+    # 1. Initialize pipeline logger
     logger = loggerz.get_logger()
     logger.info('fMOST PI align to NMT')
+
+    # 2. Load preprocessed fMOST PI volume and corresponding brain mask
     img=ants.image_read(fMOST_PI_CONFIG['output_dir'] + '/fMOST_PI/PI_8bit_rm_dn_ic_r.nii.gz')
-    mask=ants.image_read(fMOST_PI_CONFIG['output_dir'] + '/fMOST_PI/atlas/PI_mask_fillhole_0.05.nii.gz.seg.nrrd')
+    mask=ants.image_read(fMOST_PI_CONFIG['output_dir'] + '/fMOST_PI/atlas/PI_mask_0.05mm.nii.gz')
+
+    # 3. Resample image to isotropic resolution (0.2mm) and resample mask to match target
     img_=ants.resample_image(img,(0.2,0.2,0.2),use_voxels=False,interp_type=4)
     mask_=ants.resample_image_to_target(mask,img_,'multiLabel')
-    img_.to_file(fMOST_PI_CONFIG['output_dir'] + '/fMOST_PI/tmp/PI_0.1mm.nii.gz')
-    mask_.to_file(fMOST_PI_CONFIG['output_dir'] + '/fMOST_PI/tmp/PI_mask_0.1mm.nii.gz')
+
+    # Save downsampled intermediate volumes
+    img_.to_file(fMOST_PI_CONFIG['output_dir'] + '/fMOST_PI/tmp/PI_0.2mm.nii.gz')
+    mask_.to_file(fMOST_PI_CONFIG['output_dir'] + '/fMOST_PI/tmp/PI_mask_0.2mm.nii.gz')
+
+    # 4. Load standard NMT template, crop to target region, and standardize coordinate origins
     nmt=ants.image_read('template/NMT/NMT_brain/NMT_v2.0_sym_SS.nii.gz')
     nmt=crop_brain(nmt)
     nmt_,img_,mask_=reset_img([nmt,img_,mask_])
 
-    t=ants.registration(nmt_,img_,'Similarity',aff_metric='GC',outprefix=fMOST_PI_CONFIG['output_dir']+'/reg/xfms/PItoNMT_')
+    # 5. Perform Similarity registration (Rigid + Isotropic scaling) from PI to NMT space
+    t = ants.registration(
+        fixed=nmt_,
+        moving=img_,
+        type_of_transform='Similarity',
+        aff_metric='GC',
+        outprefix=fMOST_PI_CONFIG['output_dir'] + '/reg/xfms/PItoNMT_'
+    )
+
+    # 6. Apply forward transformation to PI image and brain mask
     img_=ants.apply_transforms(nmt_,img_,t['fwdtransforms'],'bSpline')
     mask_ = ants.apply_transforms(nmt_, mask_, t['fwdtransforms'], 'multiLabel')
+
+    # Synchronize image header geometry with standard NMT space
     img_=ants.copy_image_info(nmt,img_)
     mask_=ants.copy_image_info(nmt, mask_)
-    mask_.to_file(fMOST_PI_CONFIG['output_dir'] + '/reg/atlas/PI_alignNMT_mask_.nii.gz')
-    img_ = ants.iMath_truncate_intensity(img_, 0.01, 0.99)
-    img_.to_file(fMOST_PI_CONFIG['output_dir']+'/reg/PI_alignNMT_tmp.nii.gz')
+    mask_.to_file(fMOST_PI_CONFIG['output_dir'] + '/reg/atlas/PI_alignNMT_mask.nii.gz')
 
+    # 7. Truncate intensity outliers (1% to 99% quantiles) and save primary aligned image
+    img_ = ants.iMath_truncate_intensity(img_, 0.01, 0.99)
+    img_.to_file(fMOST_PI_CONFIG['output_dir']+'/reg/PI_alignNMT.nii.gz')
+
+    # 8. Post-processing: Smooth and apply N4 bias field correction within mask
+    img_=ants.smooth_image(img_,0.4)
+    img_=ants.n4_bias_field_correction(img_,mask_,shrink_factor=2)
+    img_.to_file(fMOST_PI_CONFIG['output_dir']+'/reg/PI_alignNMT_.nii.gz')
 
 def correct_T1like():
+    """
+    Mask the synthesized T1-like PI volume to remove non-brain background noise.
+
+    Loads the aligned PI image and synthesized T1-like volume, generates or loads
+    a foreground brain mask, and applies it to output a background-cleaned
+    synthetic T1-like image (T1likePI_c.nii.gz).
+    """
+    # 1. Initialize pipeline logger
     logger = loggerz.get_logger()
     logger.info('correct T1like')
+
+    # 2. Load aligned PI volume and synthesized T1-like volume
     img=ants.image_read(fMOST_PI_CONFIG['output_dir']+'/reg/PI_alignNMT.nii.gz')
     t1like = ants.image_read(fMOST_PI_CONFIG['output_dir'] + '/reg/T1likePI.nii.gz')
+
+    # 3. Check if the brain foreground mask exists; if not, generate and save it
     if not os.path.exists(fMOST_PI_CONFIG['output_dir'] + '/reg/atlas/PI_alignNMT_mask.nii.gz'):
+        # Generate binary brain mask from the aligned PI volume
         mask=ants.get_mask(img,1)
         mask.to_file(fMOST_PI_CONFIG['output_dir'] + '/reg/atlas/PI_alignNMT_mask.nii.gz')
     else:
+        # Load existing brain mask
         mask=ants.image_read(fMOST_PI_CONFIG['output_dir'] + '/reg/atlas/PI_alignNMT_mask.nii.gz')
+
+    # 4. Apply mask to the synthesized T1-like volume to remove non-brain background
     t1like_ = ants.mask_image(t1like, mask)
+
+    # 5. Save the background-cleaned synthetic T1-like volume
     t1like_.to_file(fMOST_PI_CONFIG['output_dir']+'/reg/T1likePI_c.nii.gz')
 
-def mergePI():
-    logger = loggerz.get_logger()
-    logger.info('correct T1like iter2')
-    path=fMOST_PI_CONFIG['output_dir']
-    pi=ants.image_read(path+'/reg/PI_alignNMT_.nii.gz')
-    t1like=ants.image_read(path+'/reg/T1likePI_c.nii.gz')
-    mask = ants.get_mask(t1like)
-    # mask = ants.get_mask(pi)
-    pi_inv=ants.image_clone(t1like)
-    t1like_data=t1like.numpy().copy()
-    pi_data=pi.numpy().copy()
-    # pi_data_inv = np.abs(util.invert(pi_data))
-    pi_data_inv=(np.max(pi_data)-pi_data)* mask.numpy().copy()
-    pi_data_inv[pi_data_inv<0]=0
-    pi_inv[:, :, :] = pi_data_inv
-    pi_inv=ants.iMath_truncate_intensity(pi_inv,0.01,0.99)
-    pi_inv=ants.denoise_image(pi_inv)
-    pi_inv.to_file(path + '/reg/pi_inv.nii.gz')
-    t=ants.registration(pi_inv,t1like,type_of_transform='SyNOnly',syn_metric='CC',reg_iterations=(40,20,20),flow_sigma=5,total_sigma=0.5,syn_sampling=5)
-    t1like=t['warpedmovout'].clone()
-    t1like_data=t1like.numpy().copy()
-    pi_data_inv=pi_inv.numpy().copy()
-    tf_augtmp = normalization(t1like_data.copy() * (1+normalization(pi_data_inv)*0.3) * mask.numpy().copy()) * 255
-    tf_augtmp=t1like_data
-    t1like[:, :, :]=tf_augtmp
-    t1like.to_file(path+'/reg/T1likePI_c_merge.nii.gz')
 
 def fMOST_PI_3Dreg():
     """
@@ -325,7 +352,7 @@ def repair_atlas():
 
 
 def seg_byt1pi():
-    method = 'Method A (CC)'
+    method = ''
     MRI_YAML_PATH = os.getcwd() + '/config/MRI_config.yaml'
     MRI_CONFIG = yaml.safe_load(open(MRI_YAML_PATH, 'r'))
     if fMOST_PI_CONFIG['atlas_repair_bySeg']:

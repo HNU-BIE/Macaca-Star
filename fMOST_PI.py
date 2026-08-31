@@ -57,8 +57,8 @@ def main():
 
 
 if __name__ == "__main__":
-    # Step 1: Check and validate the required directory hierarchy and data files
+    # Check and validate the required directory hierarchy and data files
     check_file_structure(1)
 
-    # Step 2: Launch the main processing pipeline
+    # Launch the main processing pipeline
     main()

@@ -70,10 +70,8 @@ into the standard NMT space, enabling multimodal integration, cross-subject comp
 
 Macaca-Star has been installed and tested on:
 
-- Windows
-- Ubuntu 18
-- Ubuntu 20
-- Ubuntu 22
+- Windows / Windows Server
+- Ubuntu 18.04 / 20.04 / 22.04
 
 A minimum of **32 GB RAM** is recommended for general processing. Memory requirements may increase substantially when processing large whole-brain optical datasets.
 

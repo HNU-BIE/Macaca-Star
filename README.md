@@ -76,8 +76,6 @@ A minimum of **32 GB RAM** is recommended for general processing. Memory require
 
 GPU acceleration and a compatible CUDA environment are required for deep learning-based cross-modal translation.
 
-For inference, pretrained CycWave-Mamba checkpoints are provided in the [`checkpoints`](https://github.com/HNU-BIE/Macaca-Star/tree/main/checkpoints) folder.
-
 For model training, our development environment used two NVIDIA RTX A6000 GPUs (48 GB each).
 
 

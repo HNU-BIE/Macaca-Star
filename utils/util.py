@@ -4,7 +4,6 @@
 @Project ：Macaca-Star
 @File    ：util.py
 @Author  ：Zauber
-@Date    ：2024/6/3
 """
 import os
 import numpy as np
@@ -390,7 +389,7 @@ def atlas_reg_ByT1w():
 
     # Load subject-specific in vivo MRI, synthetic T1-like PI, and PI volumes
     t1 = ants.image_read(fMOST_PI_CONFIG['output_dir'] + '/MRI/MRI_brain_bc_dn_.nii.gz')
-    tsfer = ants.image_read(fMOST_PI_CONFIG['output_dir']+'/reg/T1likePI_wm.nii.gz')
+    tsfer = ants.image_read(fMOST_PI_CONFIG['output_dir']+'/reg/T1likePI_c.nii.gz')
     pi=ants.image_read(fMOST_PI_CONFIG['output_dir']+'/reg/PI_alignNMT_.nii.gz')
 
     # Check if the pre-aligned brain foreground mask exists

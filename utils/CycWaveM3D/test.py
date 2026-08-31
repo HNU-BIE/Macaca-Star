@@ -213,7 +213,7 @@ def PI_to_T1_cyclegan():
     YAML_PATH = os.getcwd() + '/config/fMOST_PI_config.yaml'
     fMOST_PI_CONFIG = yaml.safe_load(open(YAML_PATH, 'r'))
     opt = load_config("config/CycWave-Mamba3D_config.yaml", mode="test")
-    opt.image = fMOST_PI_CONFIG['output_dir']+'/reg/PI_alignNMT.nii.gz'
+    opt.image = fMOST_PI_CONFIG['output_dir']+'/reg/PI_alignNMT_.nii.gz'
     opt.result =fMOST_PI_CONFIG['output_dir']+'/reg/T1likePI.nii.gz'
     opt.checkpoints_dir = os.getcwd() + '/checkpoints'
     opt.name = 'fMOSTPI2NMT'

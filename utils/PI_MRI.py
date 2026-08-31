@@ -25,7 +25,7 @@ def PI_preproc():
     # denoise_img()                # Step 5: Apply image denoising filters to improve signal-to-noise ratio (SNR)
     # intensity_c()                # Step 6: Perform intensity non-uniformity and bias field correction
     # clahe_image()                # Step 7: Apply Contrast Limited Adaptive Histogram Equalization (CLAHE)
-    PI_alignNMT()                # Step 8: Perform initial rigid/affine spatial alignment from PI to NMT atlas space
+    # PI_alignNMT()                # Step 8: Perform initial rigid/affine spatial alignment from PI to NMT atlas space
     PI_to_T1_cyclegan()          # Step 9: Synthesize T1-like volume from PI using 3D CycWaveMamba model
     correct_T1like()             # Step 10: Mask the synthesized T1-like volume to remove non-brain background
     fMOST_PI_3Dreg()             # Step 11: 3D non-linear registration (MRI-guided via in vivo MRI or MRI-free to NMT)

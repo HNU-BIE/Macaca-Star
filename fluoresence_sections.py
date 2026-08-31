@@ -4,7 +4,7 @@
 Macaca-Star Pipeline Entry Script (Blockface & Fluorescence Workflow).
 
 This script validates the required directory structure for blockface and fluorescence
-imaging data (mode=2), initializes logging, and executes blockface reconstruction,
+imaging data, initializes logging, and executes blockface reconstruction,
 fluorescence section processing, and multimodal registration pipelines.
 
 Output Directory Structure:

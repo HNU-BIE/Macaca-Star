@@ -4,7 +4,6 @@
 
 - [Overview](#overview)
 - [Macaca-Star Pipeline](#macaca-star-pipeline)
-- [Cross-modal Translation with CycWave-Mamba](#cross-modal-translation-with-cycwave-mamba)
 - [System Requirements](#system-requirements)
 - [Installation](#installation)
 - [Getting Started](#getting-started)

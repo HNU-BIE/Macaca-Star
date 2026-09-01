@@ -29,6 +29,4 @@ def PI_preproc():
     PI_to_T1_cyclegan()          # Step 9: Synthesize T1-like volume from PI using 3D CycWaveMamba model
     correct_T1like()             # Step 10: Mask the synthesized T1-like volume to remove non-brain background
     fMOST_PI_3Dreg()             # Step 11: 3D non-linear registration (MRI-guided via in vivo MRI or MRI-free to NMT)
-    # seg_byt1pi()                 # Step 12: [Optional] Tissue segmentation on synthetic T1
-    # repair_atlas()               # Step 13: [Optional] Repair/refine atlas boundaries using segmentation priors
-    # upsample_toOrigin()          # Step 14: Upsample atlas back to the original full-resolution space
+    # upsample_toOrigin()          # Step 12: Upsample atlas back to the original full-resolution space

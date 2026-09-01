@@ -110,8 +110,9 @@ def intensity_c():
         fslice=touint8(fslice)
         fslice=CLAHE.apply(fslice,clip_limit=2)
         img[:, i, :]=fslice
-    img=ants.denoise_image(img,ants.get_mask(img))
     mask=ants.get_mask(img)
+    img=ants.denoise_image(img,mask)
+    img=ants.n4_bias_field_correction(img,mask,shrink_factor=2)
     img=ants.mask_image(img,mask)
     img.to_file(fluor_CONFIG['output_dir']+'/blockface/b_recon_oc_scale_clahe.nii.gz')
 

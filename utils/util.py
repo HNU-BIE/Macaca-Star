@@ -18,9 +18,29 @@ YAML_PATH = os.getcwd() + '/config/fMOST_PI_config.yaml'
 fMOST_PI_CONFIG = yaml.safe_load(open(YAML_PATH, 'r'))
 
 def horizontal():
-    isPlot=True
+    """
+    Remove horizontal stripe artifacts from the PI volume using profile-guided
+    intensity compensation and Bezier curve baseline fitting.
+
+    Workflow:
+      1. Load the cerebellum-removed PI volume (PI_rmc.nii.gz) and raw 8-bit PI volume.
+      2. Extract robust 2D mean intensity profiles by trimming extreme percentiles (10% - 80%).
+      3. Collapse 2D profiles into a 1D intensity curve across the vertical axis.
+      4. Detect peak intensity anchors (scipy.signal.find_peaks) and fit a smooth baseline envelope
+         using a Bezier curve (smoothing_base_bezier).
+      5. Compute correction ratio map (target_curve / observed_profile) and clamp extreme ratios.
+      6. Multiply original 3D volume by the correction ratio matrix and save the horizontally
+         destriped volume (PI_rm_h.nii.gz).
+    """
+    isPlot=False
+
+    # Load cerebellum-masked volume and original 8-bit PI volume
     pi = ants.image_read(fMOST_PI_CONFIG['output_dir'] + '/fMOST_PI/tmp/PI_rmc.nii.gz')
     pi_origin=ants.image_read(fMOST_PI_CONFIG['output_dir'] + '/fMOST_PI/PI_8bit.nii.gz')
+
+    # =========================================================================
+    # Step 1: Compute 2D robust average intensity profile across slices
+    # =========================================================================
     pi_avg = np.zeros((pi.shape[0], pi.shape[2]))
     for k in range(0, pi.shape[2]):
         pi_slice = pi[:, :, k].numpy()
@@ -28,7 +48,8 @@ def horizontal():
             pi_1d = pi_slice[i, :]
             v5 = np.where(pi_1d > 10)
             slice_data = pi_1d[v5]
-            # rm low intensity in background and brain
+
+            # Remove low-intensity background and high-intensity outlier voxels
             if len(slice_data) > 10:
                 percent_upper = np.percentile(slice_data, 80) #95
                 slice_data = slice_data[slice_data < percent_upper]
@@ -42,7 +63,9 @@ def horizontal():
             else:
                 pi_avg[i, k] = 0.0001
 
-    # rm area including a part of cerebellum, as the area intensity is confused
+    # =========================================================================
+    # Step 2: Compute 1D profile and detect peak anchors for baseline fitting
+    # =========================================================================
     pi_avg_ = pi_avg[:, 0:pi_avg.shape[1]]
     pi_avg_1d = np.zeros((pi_avg.shape[0], 1))
     for i in range(0, pi_avg.shape[0]):
@@ -51,41 +74,59 @@ def horizontal():
             pi_avg_1d[i] = np.mean(tmp[tmp > 10])
         else:
             pi_avg_1d[i] = 0
-    peaks, _ = scipy.signal.find_peaks(pi_avg_1d[:, 0], distance=10, height=25, width=10)  ##50
-    # add the first and last point
+
+    # Detect local peak locations along the 1D profile
+    peaks, _ = scipy.signal.find_peaks(pi_avg_1d[:, 0], distance=10, height=25, width=10)
+
+    # Add boundary endpoints (first and last indices) to anchor the curve
     peaks_ = np.insert(peaks, 0, 0)
     peaks_ = np.append(peaks_, pi_avg.shape[0] - 1)
     pi_avg_1d=pi_avg_1d[:,0]
     pi_avg_1d[pi_avg_1d.shape[0] - 1] = pi_avg_1d[peaks_[len(peaks_) - 2] - 10]
     pi_avg_1d[0] = pi_avg_1d[peaks_[1] - 10]
+
+    # =========================================================================
+    # Step 3: Fit smooth baseline envelope using Bezier curve interpolation
+    # =========================================================================
     y = pi_avg_1d[peaks_]
     x = peaks_
     x_curve, y_curve = smoothing_base_bezier(x, y, k=0.3, closed=False)
+
+    # Optional: Plot 1D profile, detected peak knots, and fitted Bezier baseline
     if isPlot:
         plt.plot(pi_avg_1d, label='$origin$')
         plt.legend(loc='best')
         plt.plot(x, y, 'ro')
         plt.plot(x_curve, y_curve, label='$k=0.3$')
         plt.show()
+
+    # =========================================================================
+    # Step 4: Compute and threshold intensity compensation ratio map
+    # =========================================================================
     pi_avg_1d[pi_avg_1d<=1]=1
     pi_ratio_tmp=y_curve/pi_avg_1d
     pi_ratio=np.zeros((pi_avg.shape[0],pi_avg.shape[1]))
     for k in range(0, pi_avg.shape[1]):
         pi_ratio[:,k]=pi_ratio_tmp
+
+    # Clamp extreme ratio values to prevent over-correction or distortion
     pi_ratio[pi_ratio > 8.0] = 1.0
     pi_ratio[pi_ratio < 0.01] = 1.0
     pi_ratio[np.where((pi_ratio >= 0.0) & (pi_ratio < 1.0))] = 1.0
     pi_ratio[pi_ratio > 8.0] = 1.0
     pi_ratio[pi_ratio < 0.01] = 1.0
-    # pi_data=pi.numpy()
+
+    # Save intermediate profile and ratio maps as 2D TIFF images
     pi_avg=pi_avg.astype(np.float32)
     pi_ratio = pi_ratio.astype(np.float32)
     cv2.imwrite(fMOST_PI_CONFIG['output_dir'] + '/fMOST_PI/tmp/PI_avg_h.tif', pi_avg)
     cv2.imwrite(fMOST_PI_CONFIG['output_dir'] + '/fMOST_PI/tmp/PI_ratio_h.tif', pi_ratio)
+
+    # =========================================================================
+    # Step 5: Apply ratio compensation to 3D volume and export result
+    # =========================================================================
     for j in range(0, pi.shape[1]):
         pi_origin[:, j, :] = pi_origin[:, j, :].numpy() * pi_ratio[:, :]
-
-
     ants.image_write(pi_origin, fMOST_PI_CONFIG['output_dir'] + '/fMOST_PI/tmp/PI_rm_h.nii.gz')
 
 

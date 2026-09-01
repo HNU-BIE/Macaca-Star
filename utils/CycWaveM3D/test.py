@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: UTF-8 -*-
+
 import yaml
 from utils.CycWaveM3D.utils.NiftiDataset import *
 import utils.CycWaveM3D.utils.NiftiDataset as NiftiDataset_testing
@@ -246,6 +249,7 @@ def PI_to_T1_cyclegan():
     # Run 3D patch-based sliding-window inference
     inference(model, opt.image, opt.result, opt.resample, opt.new_resolution, opt.patch_size[0],
               opt.patch_size[1], opt.patch_size[2], opt.stride_inplane, opt.stride_layer, 1)
+
 
 def b_to_T1_cyclegan():
     """

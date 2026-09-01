@@ -122,9 +122,8 @@ class CycleGANModel(BaseModel):
     def backward_D_B_freq(self):
         """Calculate GAN loss for frequency discriminator D_B_freq"""
         fake_B = self.fake_B_freq_pool.query(self.fake_B)
-
-        # 直接调用底层的 basic 函数，一行代码完成 前向+Loss+反向传播[cite: 7]
         self.loss_D_B_freq = self.backward_D_basic(self.netD_B_freq, self.real_B, fake_B)
+
     def backward_G(self):
         """Calculate the loss for generators G_A and G_B"""
         lambda_idt = self.opt.lambda_identity
@@ -139,7 +138,6 @@ class CycleGANModel(BaseModel):
             self.loss_idt_A = masked_l1_loss(self.idt_A, self.real_B) * lambda_B * lambda_idt
             # G_B should be identity if real_A is fed: ||G_B(A) - A||
             self.idt_B = self.netG_B(self.real_A)
-            # self.loss_idt_B = self.criterionIdt(self.idt_B, self.real_A) * lambda_A * lambda_idt
             self.loss_idt_B = masked_l1_loss(self.idt_B, self.real_A) * lambda_A * lambda_idt
         else:
             self.loss_idt_A = 0
@@ -153,10 +151,8 @@ class CycleGANModel(BaseModel):
         # GAN loss D_B(G_B(B))
         self.loss_G_B = self.criterionGAN(self.netD_B(self.fake_A), True)
         # Forward cycle loss || G_B(G_A(A)) - A||
-        # self.loss_cycle_A = self.criterionCycle(self.rec_A, self.real_A) * lambda_A
         self.loss_cycle_A = masked_l1_loss(self.rec_A, self.real_A) * lambda_A
         # Backward cycle loss || G_A(G_B(B)) - B||
-        # self.loss_cycle_B = self.criterionCycle(self.rec_B, self.real_B) * lambda_B
         self.loss_cycle_B = masked_l1_loss(self.rec_B, self.real_B) * lambda_B
 
         if lambda_ssim > 0:
@@ -179,7 +175,7 @@ class CycleGANModel(BaseModel):
         self.forward()  # compute fake images and reconstruction images.
 
         # ==========================
-        # G_A 和 G_B
+        # Update Generators: G_A and G_B
         # ==========================
         self.set_requires_grad([self.netD_A, self.netD_B, self.netD_B_freq], False)
         self.optimizer_G.zero_grad()  # set G_A and G_B's gradients to zero
@@ -187,7 +183,7 @@ class CycleGANModel(BaseModel):
         self.optimizer_G.step()  # update G_A and G_B's weights
 
         # ==========================
-        #  D_A 和 D_B
+        #  Update Spatial Discriminators: D_A and D_B
         # ==========================
         self.set_requires_grad([self.netD_A, self.netD_B, self.netD_B_freq], True)
 
@@ -197,7 +193,7 @@ class CycleGANModel(BaseModel):
         self.optimizer_D.step()
 
         # ==========================
-        # D_B_freq (频域)
+        # Update Frequency Discriminator: D_B_freq
         # ==========================
         self.optimizer_D_freq.zero_grad()
         self.backward_D_B_freq()

@@ -210,34 +210,78 @@ def inference(model, image_path, result_path, resample, resolution, patch_size_x
 
 
 def PI_to_T1_cyclegan():
+    """
+    Perform cross-modality synthesis from aligned PI fluorescence to pseudo-T1 MRI
+    using the trained 3D CycWave-Mamba / CycleGAN model.
+
+    Workflow:
+      1. Load pipeline-specific configuration (fMOST_PI_config.yaml) to retrieve output directories.
+      2. Load 3D model test configuration (CycWave-Mamba3D_config.yaml).
+      3. Set runtime input image path (PI_alignNMT_.nii.gz) and output destination (T1likePI.nii.gz).
+      4. Configure model checkpoints directory, experiment name, and test phase.
+      5. Initialize and set up the neural network generator.
+      6. Execute 3D patch-based sliding-window inference to synthesize the T1-like volume.
+    """
+    # Load pipeline configuration
     YAML_PATH = os.getcwd() + '/config/fMOST_PI_config.yaml'
     fMOST_PI_CONFIG = yaml.safe_load(open(YAML_PATH, 'r'))
+
+    # Load model options for test mode
     opt = load_config("config/CycWave-Mamba3D_config.yaml", mode="test")
+
+    # Configure input/output image paths dynamically
     opt.image = fMOST_PI_CONFIG['output_dir']+'/reg/PI_alignNMT_.nii.gz'
     opt.result =fMOST_PI_CONFIG['output_dir']+'/reg/T1likePI.nii.gz'
+
+    # Set checkpoint path, experiment name, and test settings
     opt.checkpoints_dir = os.getcwd() + '/checkpoints'
     opt.name = 'fMOSTPI2NMT'
     opt.phase = 'test'
     opt.model = 'test'
+
+    # Instantiate and initialize the generator model
     model = create_model(opt)
     model.setup(opt)
 
+    # Run 3D patch-based sliding-window inference
     inference(model, opt.image, opt.result, opt.resample, opt.new_resolution, opt.patch_size[0],
               opt.patch_size[1], opt.patch_size[2], opt.stride_inplane, opt.stride_layer, 1)
 
 def b_to_T1_cyclegan():
+    """
+    Perform cross-modality synthesis from aligned block-face optical volumes to pseudo-T1 MRI
+    using the trained 3D CycWave-Mamba / CycleGAN generator.
+
+    Workflow:
+      1. Load pipeline-specific configuration (fluor_sections_config.yaml) to retrieve output paths.
+      2. Load 3D model test configuration (config/config.yaml).
+      3. Set generator architecture (resnet_7blocks), filter channels (ngf=48), experiment name, and device settings.
+      4. Configure dynamic input (b_recon_oc_scale_alignMRI.nii.gz) and output (T1likeBlockface_origin.nii.gz) paths.
+      5. Initialize and set up the neural network generator.
+      6. Run 3D patch-based sliding-window inference to synthesize the T1-like block-face volume.
+    """
+    # Load pipeline configuration
     YAML_PATH = os.getcwd() + '/config/fluor_sections_config.yaml'
     fluor_CONFIG = yaml.safe_load(open(YAML_PATH, 'r'))
+
+    # Load model options for test mode
     opt = load_config("config/config.yaml", mode="test")
+
+    # Configure model architecture and runtime parameters
     opt.name = 'Blockface2NMT'
     opt.netG = 'resnet_7blocks'
     opt.gpu_ids = ''
     opt.ngf = 48
     opt.ndf = 48
+
+    # Configure input/output image paths dynamically
     opt.image = fluor_CONFIG['output_dir']+'/reg3D/b_recon_oc_scale_alignMRI.nii.gz'
     opt.result =fluor_CONFIG['output_dir']+'/reg3D/T1likeBlockface_origin.nii.gz'
     opt.checkpoints_dir = os.getcwd() + '/checkpoints'
+
+    # Instantiate and initialize the generator model
     model = create_model(opt)
     model.setup(opt)
+    # Run 3D patch-based sliding-window inference
     inference(model, opt.image, opt.result, opt.resample, opt.new_resolution, opt.patch_size[0],
               opt.patch_size[1], opt.patch_size[2], opt.stride_inplane, opt.stride_layer, 1)

@@ -131,11 +131,30 @@ def horizontal():
 
 
 def sagittal():
+    """
+    Remove sagittal stripe artifacts from the PI volume using profile-guided
+    intensity baseline fitting and Bezier curve interpolation.
+
+    Workflow:
+      1. Load the original 8-bit PI volume and cerebellum-removed PI volume.
+      2. Extract 2D intensity profiles across sagittal slices by taking robust percentile averages (85% - 95%).
+      3. Collapse 2D profiles into a 1D curve, detect periodic stripe peaks, and restore missing boundary peaks.
+      4. Correct boundary intensity drops and fit smooth baseline curves using Bezier interpolation.
+      5. Compute intensity compensation ratio map, clamp extreme values, and optionally suppress edge over-illumination.
+      6. Apply ratio compensation to the 3D volume and export the final destriped volume (PI_8bit_rm.nii.gz).
+    """
+    # Parameter settings and flags
     remove_edge_light = False
     rm_bias = 20
     rm_value = 10
+
+    # Load original 8-bit PI volume and cerebellum-masked volume
     pi_origin = ants.image_read(fMOST_PI_CONFIG['output_dir'] + '/fMOST_PI/PI_8bit.nii.gz')
     pi=ants.image_read(fMOST_PI_CONFIG['output_dir'] + '/fMOST_PI/tmp/PI_rmc.nii.gz')
+
+    # =========================================================================
+    # Compute 2D robust average intensity profile across sagittal slices
+    # =========================================================================
     pi_avg = np.zeros((pi.shape[0], pi.shape[2]))
     pi_bessel = np.zeros((pi.shape[0], pi.shape[2]))
     for i in range(0, pi.shape[0]):
@@ -147,6 +166,7 @@ def sagittal():
             v5 = np.where(pi_1d > rm_value)
             slice_data = pi_1d[v5]
 
+            # Calculate robust average between 85th and 95th percentiles
             if len(slice_data) > 10:
                 percent_upper = np.percentile(slice_data, 95)
                 slice_data = slice_data[slice_data < percent_upper]
@@ -162,6 +182,9 @@ def sagittal():
             else:
                 pi_avg[i, k] = 1
 
+    # =========================================================================
+    # 1D Profile projection and periodic peak detection/restoration
+    # =========================================================================
     pi_avg_1d = np.zeros((1, pi_avg.shape[1]))
     for k in range(0, pi_avg.shape[1]):
         tmp = pi_avg[:, k]
@@ -170,8 +193,10 @@ def sagittal():
         else:
             pi_avg_1d[0, k] = 0.0
 
-    # plt.plot(pi_avg_1d, label='pi_avg_1d')
+    # Detect periodic peak positions along 1D profile
     peaks, _ = scipy.signal.find_peaks(pi_avg_1d[0, :], distance=10, height=20, width=5)
+
+    # Estimate average peak spacing and restore missing boundary peaks
     if len(peaks) > 10:
         center_peaks_y = int(len(peaks) / 2)
         dis = 0
@@ -183,9 +208,15 @@ def sagittal():
         peaks_ = peaks_restore(peaks_, dis, pi_avg_1d.shape[1], 1)
     else:
         peaks_ = peaks
+
+    # =========================================================================
+    # Slice-wise boundary correction and Bezier baseline fitting
+    # =========================================================================
     for i in range(0, pi_avg.shape[0]):
         slice_avg = pi_avg[i, :]
         threhold=0.5
+
+        # Check and correct left boundary intensity drop
         tmp = pi_avg[:, peaks_[1]]
         t = np.mean(tmp[tmp > 10]) - np.std(tmp[tmp > 10])*threhold
         if slice_avg[peaks_[1]] - t < 0:
@@ -196,6 +227,7 @@ def sagittal():
                     slice_avg[peaks_[p - 1]] = slice_avg[peaks_[p]] - 10
                     break
 
+        # Check and correct right boundary intensity drop
         tmp = pi_avg[:, peaks_[len(peaks_) - 2]]
         t = np.mean(tmp[tmp > 10]) - np.std(tmp[tmp > 10])*threhold
         if slice_avg[peaks_[len(peaks_) - 2]] - t < 0:
@@ -206,6 +238,7 @@ def sagittal():
                     slice_avg[peaks_[len(peaks_) - p + 1]] = slice_avg[peaks_[len(peaks_) - p]] - 10
                     break
 
+        # Fit smooth Bezier baseline envelope using corrected peak anchors
         y = slice_avg[peaks_]
 
         x = peaks_
@@ -213,16 +246,20 @@ def sagittal():
         pi_bessel[i, :] = y_curve
         print('i: ' + str(i) + '  ' + str(pi_avg.shape[0]))
 
+    # =========================================================================
+    # Compute compensation ratio map and handle edge artifacts
+    # =========================================================================
     pi_ratio = pi_bessel / pi_avg
     pi_ratio[pi_avg < 5] = 1
     pi_ratio[pi_ratio > 5] = 1.0
     # pi_ratio[pi_ratio < 0] = 1
 
+    # Optional: Suppress over-illumination artifacts near tissue edges
     if remove_edge_light:
         for k in range(0, pi_ratio.shape[1]):
             for i in range(pi_ratio.shape[0] - 1, 0, -1):
                 tmp = pi_ratio[i - rm_bias:i, k]
-                if len(tmp[tmp > 1.010000]) / rm_bias >= 0.80:
+                if len(tmp[tmp > 1.01]) / rm_bias >= 0.80:
                     pi_ratio[i - rm_bias:pi_ratio.shape[0], k] = pi_ratio[i - rm_bias, k]
                     break
     print('ratio correction end')
@@ -232,12 +269,19 @@ def sagittal():
     pi_ratio[pi_ratio < 0] = 1
     pi_ratio[np.where((pi_ratio >= 0.0) & (pi_ratio < 1.0))] = 1.0
 
+    # =========================================================================
+    # Apply ratio compensation to 3D volume and export results
+    # ========================================================================
     for j in range(0, pi.shape[1]):
         pi[:, j, :] = pi_origin[:, j, :].numpy().copy() * pi_ratio[:, :]
+
+    # Save intermediate profile and ratio maps as 2D TIFF images
     pi_avg=pi_avg.astype(np.float32)
     pi_ratio = pi_ratio.astype(np.float32)
     tifffile.imwrite(fMOST_PI_CONFIG['output_dir'] + '/fMOST_PI/tmp/PI_avg_s.tif', pi_avg)
     tifffile.imwrite(fMOST_PI_CONFIG['output_dir'] + '/fMOST_PI/tmp/PI_ratio_s.tif', pi_ratio)
+
+    # Save final destriped volume
     ants.image_write(pi, fMOST_PI_CONFIG['output_dir'] + '/fMOST_PI/PI_8bit_rm.nii.gz')
 
 

@@ -28,200 +28,200 @@ MRI_CONFIG = yaml.safe_load(open(MRI_YAML_PATH, 'r'))
 
 
 def atlas_reg_ByT1w():
-    method = 'Method A (CC)'
-    if not os.path.exists(fluor_CONFIG['output_dir']+'/reg3D/'+method):
-        os.mkdir(fluor_CONFIG['output_dir']+'/reg3D/'+method)
-    if not os.path.exists(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/'):
-        os.mkdir(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/')
-    if not os.path.exists(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/xfms/'):
-        os.mkdir(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/xfms/')
-    print('MRI: '+fluor_CONFIG['output_dir']+'/MRI/MRI_brain_bc_dn_edit.nii.gz')
-    t1=ants.image_read(fluor_CONFIG['output_dir']+'/MRI/MRI_brain_bc_dn_edit.nii.gz')
+    """
+    Perform MRI-guided 3D non-linear registration (SyN) connecting the standard NMT template,
+    subject-specific in vivo T1w MRI, and synthetic T1-like block-face optical data.
+
+    Workflow:
+      1. Prepare output directories for registration outputs and transformation matrices.
+      2. Load subject in vivo T1w MRI, synthetic T1-like volume, block-face volume, and NMT atlases.
+      3. Standardize spatial origins across all volumes (reset_img).
+      4. Reg Iter 1: Deformable registration from NMT template to in vivo T1w MRI space (SyN with CC metric).
+      5. Reg Iter 2: Deformable registration from synthetic T1-like block-face to in vivo T1w MRI (SyN with Mattes metric).
+      6. Reg Iter 3: Non-linear refinement between warped NMT and warped synthetic T1-like volume.
+      7. Invert and compose transformations to map NMT template into native block-face space (NMT_inblockface.nii.gz).
+    """
+    method = ''
+    atlas_level = 6  # Hierarchical parcellation level for CHARM (cortical) and SARM (subcortical) atlases
+
+    # 1. Ensure required output directories exist (atlas/ and xfms/)
+    output_reg_dir = os.path.join(fluor_CONFIG['output_dir'], 'reg3D', method)
+    os.makedirs(output_reg_dir, exist_ok=True)
+    os.makedirs(os.path.join(output_reg_dir, 'atlas'), exist_ok=True)
+    os.makedirs(os.path.join(output_reg_dir, 'xfms'), exist_ok=True)
+
+    # 2. Load subject in vivo T1w MRI, synthetic T1-like volume, aligned block-face volume, and mask
+    print('MRI: '+fluor_CONFIG['output_dir']+'/MRI/MRI_brain_bc_dn_.nii.gz')
+    t1=ants.image_read(fluor_CONFIG['output_dir']+'/MRI/MRI_brain_bc_dn_.nii.gz')
     tsfer = ants.image_read(fluor_CONFIG['output_dir']+'/reg3D/T1likeB_c.nii.gz')
     blockface=ants.image_read(fluor_CONFIG['output_dir']+'/reg3D/b_recon_oc_scale_alignMRI.nii.gz')
     b_mask = ants.image_read(fluor_CONFIG['output_dir'] + '/reg3D/atlas/B_mask.nii.gz')
+
+    # 3. Load standard NMT template brain and anatomical parcellation atlases
     tmp_origin = ants.image_read('template/NMT/NMT_brain/NMT_v2.0_sym_SS.nii.gz')
-    atlas = ants.image_read('template/NMT/NMT_brain/CHARM_6_in_NMT_v2.0_sym_D99.nii.gz')
-    atlas1 = ants.image_read('template/NMT/NMT_brain/level4/CHARM_4_in_NMT_v2.0_sym.nii.gz')
-    atlas2 = ants.image_read('template/NMT/NMT_brain/level4/SARM_4_in_NMT_v2.0_sym.nii.gz')
+    atlas1 = ants.image_read('template/NMT/NMT_brain/level'+str(atlas_level)+'/CHARM_'+str(atlas_level)+'_in_NMT_v2.0_sym.nii.gz')
+    atlas2 = ants.image_read('template/NMT/NMT_brain/level'+str(atlas_level)+'/SARM_'+str(atlas_level)+'_in_NMT_v2.0_sym.nii.gz')
     atlas3 = ants.image_read('template/NMT/NMT_brain/NMT_v2.0_sym_segmentation_edit.nii.gz')
     atlas4 = ants.image_read('template/NMT/NMT_brain/NMT_v2.0_sym_cerebellum_mask.nii.gz')
     atlas5 = ants.image_read('template/NMT/NMT_brain/NMT_v2.0_sym_segmentation.nii.gz')
     atlas6 = ants.image_read('template/NMT/NMT_brain/SARM_6_in_NMT_v2.0_sym.nii.gz')
-    t1, tsfer, blockface, tmp, atlas, atlas1, atlas2,atlas3,atlas4,atlas5,atlas6,b_mask = reset_img([t1, tsfer, blockface, tmp_origin, atlas, atlas1, atlas2,atlas3,atlas4,atlas5,atlas6,b_mask])
+
+    # 4. Standardize spatial origins across all volumes
+    t1, tsfer, blockface, tmp, atlas1, atlas2,atlas3,atlas4,atlas5,atlas6,b_mask = reset_img([t1, tsfer, blockface, tmp_origin, atlas1, atlas2,atlas3,atlas4,atlas5,atlas6,b_mask])
+
+    # =========================================================================
+    # Reg Iter 1: Deformable registration from NMT Template -> In vivo T1w MRI
+    # =========================================================================
     print('Reg iter1: MRI <--> NMT')
-    tf1 = ants.registration(t1,tmp, 'SyN',
-                            syn_metric='CC',syn_sampling=4,
-                            reg_iterations=(2400,1200,40),flow_sigma=3,total_sigma=0.5,outprefix=fluor_CONFIG['output_dir']+'/reg3D/'+method+'/xfms/atlas_NMTtoT1w_')
+    tf1 = ants.registration(
+        fixed=t1,
+        moving=tmp,
+        type_of_transform='SyN',
+        syn_metric='CC',
+        syn_sampling=4,
+        reg_iterations=(1200, 1200, 40),
+        flow_sigma=3,
+        total_sigma=0.5,
+        outprefix=fluor_CONFIG['output_dir'] + '/reg3D/' + method + '/xfms/atlas_NMTtoT1w_'
+    )
+    # Save NMT template warped into T1w MRI space
     tmp_ = ants.apply_transforms(t1,tmp, tf1['fwdtransforms'],'bSpline')
     img__ = ants.copy_image_info(tmp_origin, ants.image_clone(tmp_))
     img__.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/NMT_inT1w.nii.gz')
+
+    # =========================================================================
+    # Reg Iter 2: Deformable registration from Synthetic T1 -> In vivo T1w MRI
+    # =========================================================================
     print('Reg iter2: T1like <--> MRI')
+    # Apply brain foreground mask to optical data
     tsfer=ants.mask_image(tsfer,b_mask)
     blockface = ants.mask_image(blockface, b_mask)
-    tf3 = ants.registration(t1,tsfer, 'SyN',
-                            syn_metric='mattes',syn_sampling=32,
-                            reg_iterations=(2400,1200,40),flow_sigma=3,total_sigma=0.7,outprefix=fluor_CONFIG['output_dir']+'/reg3D/'+method+'/xfms/atlas_PItoT1w_')
+    tf3 = ants.registration(
+        fixed=t1,
+        moving=tsfer,
+        type_of_transform='SyN',
+        syn_metric='mattes',
+        syn_sampling=32,
+        reg_iterations=(1200, 1200, 40),
+        flow_sigma=3,
+        total_sigma=0.7,
+        outprefix=fluor_CONFIG['output_dir'] + '/reg3D/' + method + '/xfms/atlas_PItoT1w_'
+    )
     img__ = ants.copy_image_info(tmp_origin, ants.image_clone(tf3['warpedmovout']))
     img__.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/T1PI_inT1w.nii.gz')
     tsfer_ = ants.apply_transforms(t1,tsfer, tf3['fwdtransforms'], 'bSpline')
+
+    # =========================================================================
+    # Reg Iter 3: Non-linear refinement between warped T1-like volume and warped NMT
+    # =========================================================================
     print('Reg iter3: T1like_ <--> NMT_')
-    tf2 = ants.registration(tsfer_,tmp_, 'SyN',
-                            syn_metric='CC',syn_sampling=2,
-                            reg_iterations=(2400,1200,40),flow_sigma=5,total_sigma=0.7,outprefix=fluor_CONFIG['output_dir']+'/reg3D/'+method+'/xfms/atlas_NMTtoPIinT1w_')
+    tf2 = ants.registration(
+        fixed=tsfer_,
+        moving=tmp_,
+        type_of_transform='SyN',
+        syn_metric='CC',
+        syn_sampling=2,
+        reg_iterations=(1200, 1200, 40),
+        flow_sigma=5,
+        total_sigma=0.7,
+        outprefix=fluor_CONFIG['output_dir'] + '/reg3D/' + method + '/xfms/atlas_NMTtoPIinT1w_'
+    )
+    # 5. Invert and compose transforms to map NMT template back into native block-face space
     tmp_=tf2['warpedmovout']
     tmp_ = ants.apply_transforms(tsfer, tmp_, tf3['invtransforms'], 'bSpline')
     img__ = ants.copy_image_info(tmp_origin, ants.image_clone(tmp_))
     img__.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/NMT_inblockface.nii.gz')
 
-    ####################################################################
-    atlas_ = ants.apply_transforms(t1, atlas, tf1['fwdtransforms'], 'multiLabel')
-    atlas_.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/D99_inT1w.nii.gz')
-    atlas_ = ants.apply_transforms(tsfer_, atlas_, tf2['fwdtransforms'], 'multiLabel')
-    atlas_ = ants.apply_transforms(tsfer, atlas_, tf3['invtransforms'], 'multiLabel')
-    atlas_.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/D99_inblockface.nii.gz')
+    atlas_save_dir = fluor_CONFIG['output_dir'] + '/reg3D/' + method + '/atlas'
 
-    atlas1_ = ants.apply_transforms(t1, atlas1, tf1['fwdtransforms'], 'multiLabel')
-    atlas1_.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/CHARM4_inT1w.nii.gz')
-    atlas1_ = ants.apply_transforms(tsfer_, atlas1_, tf2['fwdtransforms'], 'multiLabel')
-    atlas1_ = ants.apply_transforms(tsfer, atlas1_, tf3['invtransforms'], 'multiLabel')
-    atlas1_.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/CHARM4_inblockface.nii.gz')
+    # =========================================================================
+    # Transform anatomical atlases into T1w MRI and Blockface spaces
+    # =========================================================================
+    # Mapping: {filename_prefix: (atlas_image_object, interpolator_type)}
+    atlases_dict = {
+        'CHARM4': (atlas1, 'multiLabel'),
+        'SARM4': (atlas2, 'multiLabel'),
+        'segmentation_edit': (atlas3, 'genericLabel'),
+        'cerebellum_mask': (atlas4, 'genericLabel'),
+        'segmentation': (atlas5, 'genericLabel'),
+        'SARM6': (atlas6, 'multiLabel'),
+    }
 
-    atlas2_ = ants.apply_transforms(t1, atlas2, tf1['fwdtransforms'], 'multiLabel')
-    atlas2_.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/SARM4_inT1w.nii.gz')
-    atlas2_ = ants.apply_transforms(tsfer_, atlas2_, tf2['fwdtransforms'], 'multiLabel')
-    atlas2_ = ants.apply_transforms(tsfer, atlas2_, tf3['invtransforms'], 'multiLabel')
-    atlas2_.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/SARM4_inblockface.nii.gz')
+    for name, (cur_atlas, interp) in atlases_dict.items():
+        # Step A: Transform to T1w MRI space and save
+        atlas_in_t1 = ants.apply_transforms(fixed=t1, moving=cur_atlas, transformlist=tf1['fwdtransforms'],
+                                            interpolator=interp)
+        img_out = ants.copy_image_info(tmp_origin, ants.image_clone(atlas_in_t1))
+        img_out.to_file(f"{atlas_save_dir}/{name}_inT1w.nii.gz")
 
-    atlas3_ = ants.apply_transforms(t1, atlas3, tf1['fwdtransforms'], 'genericLabel')
-    img__ = ants.copy_image_info(tmp_origin, ants.image_clone(atlas3_))
-    img__.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/segmentation_edit_inT1w.nii.gz')
-    atlas3_ = ants.apply_transforms(tsfer_, atlas3_, tf2['fwdtransforms'], 'genericLabel')
-    atlas3_ = ants.apply_transforms(tsfer, atlas3_, tf3['invtransforms'], 'genericLabel')
-    img__ = ants.copy_image_info(tmp_origin, ants.image_clone(atlas3_))
-    img__.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/segmentation_edit_inblockface.nii.gz')
+        # Step B: Transform through intermediate space to native block-face space and save
+        atlas_in_tsfer = ants.apply_transforms(fixed=tsfer_, moving=atlas_in_t1, transformlist=tf2['fwdtransforms'],
+                                               interpolator=interp)
+        atlas_in_bf = ants.apply_transforms(fixed=tsfer, moving=atlas_in_tsfer, transformlist=tf3['invtransforms'],
+                                            interpolator=interp)
+        img_out = ants.copy_image_info(tmp_origin, ants.image_clone(atlas_in_bf))
+        img_out.to_file(f"{atlas_save_dir}/{name}_inblockface.nii.gz")
 
-    atlas4_ = ants.apply_transforms(t1, atlas4, tf1['fwdtransforms'], 'genericLabel')
-    img__ = ants.copy_image_info(tmp_origin, ants.image_clone(atlas4_))
-    img__.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/cerebellum_mask_inT1w.nii.gz')
-    atlas4_ = ants.apply_transforms(tsfer_, atlas4_, tf2['fwdtransforms'], 'genericLabel')
-    atlas4_ = ants.apply_transforms(tsfer, atlas4_, tf3['invtransforms'], 'genericLabel')
-    img__ = ants.copy_image_info(tmp_origin, ants.image_clone(atlas4_))
-    img__.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/cerebellum_mask_inblockface.nii.gz')
+    # =========================================================================
+    # Block-face / Synthetic T1 -> T1w MRI -> NMT
+    # =========================================================================
+    # Mapping: {filename_prefix: intensity_image_object}
+    intensity_images_dict = {
+        'T1PI': tsfer,  # Synthetic T1-like volume
+        'blockface': blockface  # Aligned optical block-face volume
+    }
 
-    atlas5_ = ants.apply_transforms(t1, atlas5, tf1['fwdtransforms'], 'genericLabel')
-    img__ = ants.copy_image_info(tmp_origin, ants.image_clone(atlas5_))
-    img__.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/segmentation_inT1w.nii.gz')
-    atlas5_ = ants.apply_transforms(tsfer_, atlas5_, tf2['fwdtransforms'], 'genericLabel')
-    atlas5_ = ants.apply_transforms(tsfer, atlas5_, tf3['invtransforms'], 'genericLabel')
-    img__ = ants.copy_image_info(tmp_origin, ants.image_clone(atlas5_))
-    img__.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/segmentation_inblockface.nii.gz')
+    for name, cur_img in intensity_images_dict.items():
+        # Step A: Warp into T1w MRI space and save
+        img_in_t1 = ants.apply_transforms(fixed=t1, moving=cur_img, transformlist=tf3['fwdtransforms'],
+                                          interpolator='bSpline')
+        img_out = ants.copy_image_info(tmp_origin, ants.image_clone(img_in_t1))
+        img_out.to_file(f"{atlas_save_dir}/{name}_inT1w.nii.gz")
 
-    atlas6_ = ants.apply_transforms(t1, atlas6, tf1['fwdtransforms'], 'multiLabel')
-    atlas6_.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/SARM6_inT1w.nii.gz')
-    atlas6_ = ants.apply_transforms(tsfer_, atlas6_, tf2['fwdtransforms'], 'multiLabel')
-    atlas6_ = ants.apply_transforms(tsfer, atlas6_, tf3['invtransforms'], 'multiLabel')
-    atlas6_.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/SARM6_inblockface.nii.gz')
+        # Step B: Warp further into standard NMT template space and save
+        img_in_nmt = ants.apply_transforms(fixed=tmp, moving=img_in_t1, transformlist=tf2['invtransforms'],
+                                           interpolator='bSpline')
+        img_in_nmt = ants.apply_transforms(fixed=tmp, moving=img_in_nmt, transformlist=tf1['invtransforms'],
+                                           interpolator='bSpline')
+        img_out = ants.copy_image_info(tmp_origin, ants.image_clone(img_in_nmt))
+        img_out.to_file(f"{atlas_save_dir}/{name}_inNMT.nii.gz")
 
-    img_ = ants.apply_transforms(tmp, t1, tf1['invtransforms'], 'bSpline')
-    img_=ants.copy_image_info(tmp_origin,img_)
-    img_.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/T1w_inNMT.nii.gz')
-
-    img_ = ants.apply_transforms(t1, tsfer, tf3['fwdtransforms'], 'bSpline')
-    img__ = ants.copy_image_info(tmp_origin, ants.image_clone(img_))
-    img__.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/T1PI_inT1w.nii.gz')
-    img_ = ants.apply_transforms(tmp, img_, tf2['invtransforms'], 'bSpline')
-    img_ = ants.apply_transforms(tmp, img_, tf1['invtransforms'], 'bSpline')
-    img__ = ants.copy_image_info(tmp_origin, ants.image_clone(img_))
-    img__.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/T1PI_inNMT.nii.gz')
-
-    blockface_ = ants.apply_transforms(t1, blockface, tf3['fwdtransforms'], 'bSpline')
-    img__ = ants.copy_image_info(tmp_origin, ants.image_clone(blockface_))
-    img__.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/blockface_inT1w.nii.gz')
-    blockface_ = ants.apply_transforms(tmp, blockface_, tf2['invtransforms'], 'bSpline')
-    blockface_ = ants.apply_transforms(tmp, blockface_, tf1['invtransforms'], 'bSpline')
-    img__ = ants.copy_image_info(tmp_origin, ants.image_clone(blockface_))
-    img__.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/blockface_inNMT.nii.gz')
-
-def atlas_reg_ByT1w_v2():
-    t1=ants.image_read(fluor_CONFIG['output_dir']+'/MRI/MRI_brain_bc_dn_.nii.gz')
-    tsfer = ants.image_read(fluor_CONFIG['output_dir']+'/reg3D/T1wlikeB_c.nii.gz')
-    blockface=ants.image_read(fluor_CONFIG['output_dir']+'/reg3D/b_recon_oc_scale_alignMRI.nii.gz')
-    tmp_origin = ants.image_read('template/NMT/NMT_brain/NMT_v2.0_sym_SS.nii.gz')
-    atlas = ants.image_read('template/NMT/NMT_brain/D99_atlas_in_NMT_cortex.nii.gz')
-    atlas1 = ants.image_read('template/NMT/NMT_brain/CHARM_1_in_NMT_v2.0_sym.nii.gz')
-    atlas2 = ants.image_read('template/NMT/NMT_brain/SARM_6_in_NMT_v2.0_sym.nii.gz')
-    atlas3 = ants.image_read('template/NMT/NMT_brain/NMT_v2.0_sym_segmentation_edit.nii.gz')
-    atlas4 = ants.image_read('template/NMT/NMT_brain/NMT_v2.0_sym_cerebellum_mask.nii.gz')
-    atlas5 = ants.image_read('template/NMT/NMT_brain/NMT_v2.0_sym_segmentation.nii.gz')
-    t1, tsfer, blockface, tmp, atlas, atlas1, atlas2,atlas3,atlas4,atlas5 = reset_img([t1, tsfer, blockface, tmp_origin, atlas, atlas1, atlas2,atlas3,atlas4,atlas5])
-    print('Reg iter1: T1like <--> MRI')
-    tf1 = ants.registration(t1,tsfer, 'SyN',
-                            syn_metric='meansquares',syn_sampling=32,
-                            reg_iterations=(2100,1200,1200,20),flow_sigma=3,total_sigma=1,outprefix=fluor_CONFIG['output_dir']+'/reg3D/xfms/atlas_btoT1w_v2_')
-    tsfer_ = ants.apply_transforms(t1,tsfer, tf1['fwdtransforms'],'bSpline')
-    img__ = ants.copy_image_info(tmp_origin, ants.image_clone(tsfer_))
-    img__.to_file(fluor_CONFIG['output_dir']+'/reg3D/atlas/T1B_inT1w.nii.gz')
-    print('Reg iter2: T1like in MRI <--> NMT')
-    tf2 = ants.registration(tmp,tsfer_, 'SyN',
-                            syn_metric='meansquares',syn_sampling=32,
-                            reg_iterations=(2100,1200,1200,20),flow_sigma=3,total_sigma=0.15,outprefix=fluor_CONFIG['output_dir']+'/reg3D/xfms/atlas_btoNMT_v2_',redius=4)
-
-    tsfer_ = ants.apply_transforms(tmp,tsfer_, tf2['fwdtransforms'],'bSpline')
-    img__ = ants.copy_image_info(tmp_origin, ants.image_clone(tsfer_))
-    img__.to_file(fluor_CONFIG['output_dir']+'/reg3D/atlas/T1PI_inNMT.nii.gz')
-
-
-
-    ####################################################################
-    atlas_ = ants.apply_transforms(t1, atlas, tf2['invtransforms'], 'multiLabel')
-    atlas_ = ants.apply_transforms(tsfer, atlas_, tf1['invtransforms'], 'multiLabel')
-    atlas_.to_file(fluor_CONFIG['output_dir']+'/reg3D/atlas/D99_inblockface.nii.gz')
-
-    atlas1_ = ants.apply_transforms(t1, atlas1, tf2['invtransforms'], 'multiLabel')
-    atlas1_ = ants.apply_transforms(tsfer, atlas1_, tf1['invtransforms'], 'multiLabel')
-    atlas1_.to_file(fluor_CONFIG['output_dir']+'/reg3D/atlas/CHARM1_inblockface.nii.gz')
-
-    atlas2_ = ants.apply_transforms(t1, atlas2, tf2['invtransforms'], 'multiLabel')
-    atlas2_ = ants.apply_transforms(tsfer, atlas2_, tf1['invtransforms'], 'multiLabel')
-    atlas2_.to_file(fluor_CONFIG['output_dir']+'/reg3D/atlas/SARM6_inblockface.nii.gz')
-
-    atlas3_ = ants.apply_transforms(t1, atlas3, tf2['invtransforms'], 'genericLabel')
-    atlas3_ = ants.apply_transforms(tsfer, atlas3_, tf1['invtransforms'], 'genericLabel')
-    img__ = ants.copy_image_info(tmp_origin, ants.image_clone(atlas3_))
-    img__.to_file(fluor_CONFIG['output_dir']+'/reg3D/atlas/segmentation_edit_inblockface.nii.gz')
-
-    atlas4_ = ants.apply_transforms(t1, atlas4, tf2['invtransforms'], 'genericLabel')
-    atlas4_ = ants.apply_transforms(tsfer, atlas4_, tf1['invtransforms'], 'genericLabel')
-    img__ = ants.copy_image_info(tmp_origin, ants.image_clone(atlas4_))
-    img__.to_file(fluor_CONFIG['output_dir']+'/reg3D/atlas/cerebellum_mask_inblockface.nii.gz')
-
-    atlas5_ = ants.apply_transforms(t1, atlas5, tf2['invtransforms'], 'genericLabel')
-    atlas5_ = ants.apply_transforms(tsfer, atlas5_, tf1['invtransforms'], 'genericLabel')
-    img__ = ants.copy_image_info(tmp_origin, ants.image_clone(atlas5_))
-    img__.to_file(fluor_CONFIG['output_dir']+'/reg3D/atlas/segmentation_inblockface.nii.gz')
-
-    blockface_ = ants.apply_transforms(tmp, blockface, tf1['fwdtransforms'], 'bSpline')
-    img__ = ants.copy_image_info(tmp_origin, ants.image_clone(blockface_))
-    img__.to_file(fluor_CONFIG['output_dir']+'/reg3D/atlas/blockface_inMRI.nii.gz')
-    blockface_ = ants.apply_transforms(tmp, blockface_, tf2['fwdtransforms'], 'bSpline')
-    img__ = ants.copy_image_info(tmp_origin, ants.image_clone(blockface_))
-    img__.to_file(fluor_CONFIG['output_dir']+'/reg3D/atlas/blockface_inNMT.nii.gz')
+    # =========================================================================
+    # 3. Warp in vivo T1w MRI into standard NMT template space
+    # =========================================================================
+    t1_in_nmt = ants.apply_transforms(fixed=tmp, moving=t1, transformlist=tf1['invtransforms'], interpolator='bSpline')
+    t1_in_nmt = ants.copy_image_info(tmp_origin, t1_in_nmt)
+    t1_in_nmt.to_file(f"{atlas_save_dir}/T1w_inNMT.nii.gz")
 
 
 def atlas_reg_noT1w():
+    """
+    Perform direct 3D non-linear anatomical registration (SyN) between the synthetic
+    T1-like block-face volume and the standard NMT template without in vivo MRI guidance.
+
+    Workflow:
+      1. Prepare output directories for registration outputs and transformation matrices.
+      2. Load synthetic T1-like volume, block-face volume, NMT template, and anatomical atlases/masks.
+      3. Standardize spatial coordinate origins across all volumes (reset_img).
+      4. Perform direct SyN deformable registration from NMT template (moving) to synthetic T1 (fixed).
+      5. Transform anatomical atlases into native block-face space using forward transforms (multiLabel/genericLabel).
+      6. Warp optical intensity volumes into standard NMT template space using inverse transforms (bSpline).
+    """
     print('no MRI')
-    method = 'Method D (CC) withOriginCycle'
-    if not os.path.exists(fluor_CONFIG['output_dir']+'/reg3D/'+method):
-        os.mkdir(fluor_CONFIG['output_dir']+'/reg3D/'+method)
-    if not os.path.exists(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/'):
-        os.mkdir(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/')
-    if not os.path.exists(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/xfms/'):
-        os.mkdir(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/xfms/')
+    method = ''
+
+    # Ensure required output directories exist (atlas/ and xfms/)
+    output_reg_dir = os.path.join(fluor_CONFIG['output_dir'], 'reg3D', method)
+    os.makedirs(output_reg_dir, exist_ok=True)
+    os.makedirs(os.path.join(output_reg_dir, 'atlas'), exist_ok=True)
+    os.makedirs(os.path.join(output_reg_dir, 'xfms'), exist_ok=True)
+
+    # Load synthetic T1-like volume, aligned block-face volume, and reference NMT template
     tsfer = ants.image_read(fluor_CONFIG['output_dir']+'/reg3D/T1likeBlockface_origin.nii.gz')
-    # tsfer = ants.image_read(fluor_CONFIG['output_dir'] + '/reg3D/b_recon_oc_scale_alignMRI.nii.gz')
     blockface=ants.image_read(fluor_CONFIG['output_dir']+'/reg3D/b_recon_oc_scale_alignMRI.nii.gz')
     tmp_origin = ants.image_read('template/NMT/NMT_brain/NMT_v2.0_sym_SS.nii.gz')
+
+    # 3. Load anatomical parcellation atlases and tissue masks
     atlas = ants.image_read('template/NMT/NMT_brain/CHARM_6_in_NMT_v2.0_sym_D99.nii.gz')
     atlas1 = ants.image_read('template/NMT/NMT_brain/level4/CHARM_4_in_NMT_v2.0_sym.nii.gz')
     atlas2 = ants.image_read('template/NMT/NMT_brain/level4/SARM_4_in_NMT_v2.0_sym.nii.gz')
@@ -229,229 +229,62 @@ def atlas_reg_noT1w():
     atlas4 = ants.image_read('template/NMT/NMT_brain/NMT_v2.0_sym_cerebellum_mask.nii.gz')
     atlas5 = ants.image_read('template/NMT/NMT_brain/NMT_v2.0_sym_segmentation.nii.gz')
     atlas6 = ants.image_read('template/NMT/NMT_brain/SARM_6_in_NMT_v2.0_sym.nii.gz')
+
+    # Standardize spatial origins across all volumes
     tsfer, blockface, tmp, atlas, atlas1, atlas2,atlas3, atlas4, atlas5,atlas6 = reset_img([tsfer, blockface, tmp_origin, atlas, atlas1, atlas2,atlas3, atlas4, atlas5,atlas6])
-    tf1 = ants.registration(tsfer,tmp, 'SyN',
-                            syn_metric='CC',syn_sampling=4,
-                            reg_iterations=(2400,1200,40),flow_sigma=3,total_sigma=0.1,outprefix=fluor_CONFIG['output_dir']+'/reg3D/'+method+'/xfms/atlas_PItoNMT_',redius=4)
+
+    # =========================================================================
+    # Direct Deformable Registration: NMT Template -> Synthetic T1 Block-face
+    # =========================================================================
+    tf1 = ants.registration(
+        fixed=tsfer,
+        moving=tmp,
+        type_of_transform='SyN',
+        syn_metric='CC',
+        syn_sampling=4,
+        reg_iterations=(2400, 1200, 40),
+        flow_sigma=3,
+        total_sigma=0.1,
+        outprefix=fluor_CONFIG['output_dir'] + '/reg3D/' + method + '/xfms/atlas_PItoNMT_',
+        redius=4
+    )
+    # Save NMT template warped to native block-face space
     img_ = ants.copy_image_info(tmp_origin, tf1['warpedmovout'])
     img_.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/NMT_inblockface.nii.gz')
-    ###################################################################
 
-    atlas_ = ants.apply_transforms(tsfer, atlas, tf1['fwdtransforms'], 'multiLabel')
-    atlas_.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/D99_inblockface.nii.gz')
+    # =========================================================================
+    # 1. Loop over Atlases & Masks: Warp NMT -> Native Block-face Space
+    # =========================================================================
+    # Mapping: {filename_prefix: (atlas_image_object, interpolator_type)}
+    atlas_save_dir = fluor_CONFIG['output_dir'] + '/reg3D/' + method + '/atlas'
+    atlases_dict = {
+        'D99': (atlas, 'multiLabel'),
+        'CHARM4': (atlas1, 'multiLabel'),
+        'SARM4': (atlas2, 'multiLabel'),
+        'SARM6': (atlas6, 'multiLabel'),
+        'segmentation_edit': (atlas3, 'multiLabel'),
+        'cerebellum_mask': (atlas4, 'genericLabel'),
+        'segmentation': (atlas5, 'multiLabel'),
+    }
 
-    atlas1_ = ants.apply_transforms(tsfer, atlas1, tf1['fwdtransforms'], 'multiLabel')
-    atlas1_.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/CHARM4_inblockface.nii.gz')
+    for name, (cur_atlas, interp) in atlases_dict.items():
+        atlas_in_bf = ants.apply_transforms(fixed=tsfer, moving=cur_atlas, transformlist=tf1['fwdtransforms'], interpolator=interp)
+        atlas_in_bf.to_file(f"{atlas_save_dir}/{name}_inblockface.nii.gz")
 
-    atlas2_ = ants.apply_transforms(tsfer, atlas2, tf1['fwdtransforms'], 'multiLabel')
-    atlas2_.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/SARM4_inblockface.nii.gz')
+    # =========================================================================
+    # 2. Loop over Intensity Images: Warp Block-face / Synthetic T1 -> NMT Space
+    # =========================================================================
+    # Mapping: {filename_prefix: intensity_image_object}
+    intensity_images_dict = {
+        'T1PI': tsfer,          # Synthetic T1-like volume
+        'blockface': blockface  # Aligned optical block-face volume
+    }
 
-    atlas6_ = ants.apply_transforms(tsfer, atlas6, tf1['fwdtransforms'], 'multiLabel')
-    atlas6_.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/SARM6_inblockface.nii.gz')
+    for name, cur_img in intensity_images_dict.items():
+        img_in_nmt = ants.apply_transforms(fixed=tmp, moving=cur_img, transformlist=tf1['invtransforms'], interpolator='bSpline')
+        img_in_nmt = ants.copy_image_info(tmp_origin, img_in_nmt)
+        img_in_nmt.to_file(f"{atlas_save_dir}/{name}_inNMT.nii.gz")
 
-    atlas3_ = ants.apply_transforms(tsfer, atlas3, tf1['fwdtransforms'], 'multiLabel')
-    atlas3_.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/segmentation_edit_inblockface.nii.gz')
-
-    atlas4_ = ants.apply_transforms(tsfer, atlas4, tf1['fwdtransforms'], 'genericLabel')
-    atlas4_.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/cerebellum_mask_inblockface.nii.gz')
-
-    atlas5_ = ants.apply_transforms(tsfer, atlas5, tf1['fwdtransforms'], 'multiLabel')
-    atlas5_.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/segmentation_inblockface.nii.gz')
-
-    img_ = ants.apply_transforms(tmp, tsfer, tf1['invtransforms'], 'bSpline')
-    img_=ants.copy_image_info(tmp_origin, img_)
-    img_.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/T1PI_inNMT.nii.gz')
-
-    blockface_ = ants.apply_transforms(tmp, blockface, tf1['invtransforms'], 'bSpline')
-    blockface_ = ants.copy_image_info(tmp_origin, blockface_)
-    blockface_.to_file(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/blockface_inNMT.nii.gz')
-
-
-def atlas_reg_ByT1w_missing(subject,method='Method A (CC)_Lesion',p=0,LR=None):
-    fluor_CONFIG['output_dir']=subject
-    if not os.path.exists(fluor_CONFIG['output_dir']+'/reg3D/'+method):
-        os.mkdir(fluor_CONFIG['output_dir']+'/reg3D/'+method)
-    if not os.path.exists(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/'):
-        os.mkdir(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/')
-    if not os.path.exists(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/xfms/'):
-        os.mkdir(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/xfms/')
-    t1 = ants.image_read(fluor_CONFIG['output_dir'] + '/MRI/MRI_brain_bc_dn_.nii.gz')
-    tsfer = ants.image_read(fluor_CONFIG['output_dir']+'/reg3D/T1likeB_c.nii.gz')
-    pi=ants.image_read(fluor_CONFIG['output_dir']+'/reg3D/b_recon_oc_scale_alignMRI.nii.gz')
-    mask = ants.image_read(fluor_CONFIG['output_dir'] + '/reg3D/atlas/B_mask.nii.gz')
-    mask_data=mask.numpy().copy()
-    les=int(mask_data.shape[1] * p)
-    mask_data[:,0:les,:]=0
-    mask_data[:, mask_data.shape[1]-les:mask_data.shape[1], :] = 0
-    mask[:,:,:]=mask_data
-    pi = ants.mask_image(pi, mask)
-    tsfer = ants.mask_image(tsfer, mask)
-    pi.to_file(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/B_Lesion_'+str(p)+'.nii.gz')
-    tsfer.to_file(fluor_CONFIG['output_dir'] + '/reg3D/' + method + '/atlas/T1B_Lesion'+str(p)+'.nii.gz')
-    tmp_origin = ants.image_read('template/NMT/NMT_brain/NMT_v2.0_sym_SS.nii.gz')
-    tmp_mask = ants.image_read('template/NMT/NMT_brain/NMT_v2.0_sym_brainmask.nii.gz')
-    tmp_origin=ants.mask_image(tmp_origin, tmp_mask)
-    atlas2 = ants.image_read('template/NMT/NMT_brain/NMT_v2.0_sym_segmentation.nii.gz')
-    # atlas = ants.image_read('template/NMT/NMT_brain/CHARM_6_in_NMT_v2.0_sym_D99.nii.gz')
-    # atlas4 = ants.image_read('template/NMT/NMT_brain/SARM_6_in_NMT_v2.0_sym.nii.gz')
-    atlas=ants.image_read('template/NMT/NMT_brain/level4/CHARM_4_in_NMT_v2.0_sym.nii.gz')
-    atlas4=ants.image_read('template/NMT/NMT_brain/level4/SARM_4_in_NMT_v2.0_sym.nii.gz')
-    atlas2_=ants.mask_image(atlas2,atlas2,5)
-    atlas2_data=atlas2_.numpy()
-    atlas2_data[atlas2_data>0]=1
-    atlas2_[:,:,:]=atlas2_data
-    tmp_origin=tmp_origin-ants.mask_image(tmp_origin, atlas2_)
-    tmp_origin.to_file(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/NMT.nii.gz')
-    atlas.to_file(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/D99.nii.gz')
-    t1,tsfer,pi,tmp,atlas,atlas2,atlas4,mask=reset_img([t1,tsfer,pi,tmp_origin,atlas,atlas2,atlas4,mask])
-    print('Reg iter1: T1like in MRI <--> NMT')
-    start_time = time.time()
-    # syn_sampling 4  total_sigma 0.5 reg3D_iterations=(2400,1200,40)
-    tf1 = ants.registration(t1,tmp, 'SyN',syn_metric='mattes',syn_sampling=32,grad_step=0.3,aff_metric='GC',
-                            reg3D_iterations=(2400,1200,40),flow_sigma=3,total_sigma=0.5,singleprecision=True,outprefix=fluor_CONFIG['output_dir']+'/reg3D/'+method+'/xfms/atlas_NMTtoT1w_',verbose=False)
-    img__ = ants.copy_image_info(tmp_origin, tf1['warpedmovout'])
-    img__.to_file(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/TMP_inT1w.nii.gz')
-    tmp_ = ants.apply_transforms(t1,tmp, tf1['fwdtransforms'],'bSpline' )
-    print('reg3D iter2: T1like <--> MRI')
-    # syn_sampling 4  total_sigma 0.7 reg3D_iterations=(1200,1200,40)
-    if p>=0.3:
-        type_reg='Similarity'
-    elif p >= 0.2:
-        type_reg = 'Affine'
-    else:
-        type_reg='SyN'
-    print(type_reg)
-    tf_mask = ants.registration(t1,tsfer, type_reg,aff_metric='mattes',
-                            reg_iterations=(40,20,0),outprefix=fluor_CONFIG['output_dir']+'/reg3D/'+method+'/xfms/mask_PItoT1w_Affine_',verbose=False)
-    tsfer_ = ants.apply_transforms(t1, tsfer, tf_mask['fwdtransforms'], 'bSpline')
-    tsfer_.to_file(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/tsfer_affinetoT1w.nii.gz')
-    mask_ = ants.apply_transforms(t1, mask, tf_mask['fwdtransforms'], 'multiLabel')
-    mask_.to_file(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/mask_affinetoT1w.nii.gz')
-    # mask_=mask
-    t1_=ants.mask_image(t1, mask_)
-    t1_.to_file(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/T1w.nii.gz')
-    tsfer_.to_file(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/tsfer_syntoT1w.nii.gz')
-
-    tf3 = ants.registration(t1_,tsfer, 'SyN',
-                            syn_metric='mattes',syn_sampling=32,grad_step=0.3,aff_metric='GC',
-                            reg_iterations=(2400,1200,40),flow_sigma=3,total_sigma=0.1,outprefix=fluor_CONFIG['output_dir']+'/reg3D/'+method+'/xfms/atlas_PItoT1w_',verbose=False)
-
-    tsfer_ = ants.apply_transforms(t1_,tsfer, tf3['fwdtransforms'],whichtoinvert=[False,False], interpolator='bSpline')
-    mask_ = ants.apply_transforms(t1_, mask, tf3['fwdtransforms'], 'multiLabel')
-    tf3['warpedmovout'].to_file(fluor_CONFIG['output_dir'] + '/reg3D/' + method + '/atlas/T1B_inT1w2.nii.gz')
-    tsfer_.to_file(fluor_CONFIG['output_dir'] + '/reg3D/' + method + '/atlas/T1B_inT1w.nii.gz')
-    mask_.to_file(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/mask_affinetoT1w2.nii.gz')
-
-    print('reg3D iter3: T1like_ <--> NMT_')
-    tmp_=ants.mask_image(tmp_, mask_)
-    ## syn_sampling 2  total_sigma 0.7 reg_iterations=(2400,1200,40)
-    tf2 = ants.registration(tsfer_,tmp_, 'SyN',
-                            syn_metric='mattes',syn_sampling=32,grad_step=0.2,
-                            reg_iterations=(2400,1200,40),flow_sigma=3,total_sigma=0.0,singleprecision=True,outprefix=fluor_CONFIG['output_dir']+'/reg3D/'+method+'/xfms/atlas_NMTtoPIinT1w_',verbose=False)
-    end_time = time.time()
-    tmp_=tf2['warpedmovout']
-    tmp_ = ants.apply_transforms(tsfer, tmp_, tf3['invtransforms'], 'bSpline')
-    img__ = ants.copy_image_info(tmp_origin, tmp_)
-    img__.to_file(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/TMP_inT1B.nii.gz')
-    ###################################################################
-    atlas_ = ants.apply_transforms(t1, atlas, tf1['fwdtransforms'], 'multiLabel')
-    atlas_.to_file(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/Charm4_inT1w.nii.gz')
-    atlas_ = ants.apply_transforms(tsfer_, atlas_, tf2['fwdtransforms'], 'multiLabel')
-    atlas_ = ants.apply_transforms(tsfer, atlas_, tf3['invtransforms'], 'multiLabel')
-    atlas_.to_file(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/Charm4_inblockface.nii.gz')
-
-    atlas2_ = ants.apply_transforms(t1, atlas2, tf1['fwdtransforms'], 'multiLabel')
-    atlas2_.to_file(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/Seg_inT1w.nii.gz')
-    atlas2_ = ants.apply_transforms(tsfer_, atlas2_, tf2['fwdtransforms'], 'multiLabel')
-    atlas2_ = ants.apply_transforms(tsfer, atlas2_, tf3['invtransforms'], 'multiLabel')
-    atlas2_.to_file(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/Seg_inblockface.nii.gz')
-
-    atlas4_ = ants.apply_transforms(t1, atlas4, tf1['fwdtransforms'], 'multiLabel')
-    atlas4_.to_file(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/SARM4_inT1w.nii.gz')
-    atlas4_ = ants.apply_transforms(tsfer_, atlas4_, tf2['fwdtransforms'], 'multiLabel')
-    atlas4_ = ants.apply_transforms(tsfer, atlas4_, tf3['invtransforms'], 'multiLabel')
-    atlas4_.to_file(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/SARM4_inblockface.nii.gz')
-
-    img_ = ants.apply_transforms(tmp, t1, tf1['invtransforms'], 'bSpline')
-    img_=ants.copy_image_info(tmp_origin,img_)
-    img_.to_file(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/T1w_inNMT.nii.gz')
-
-    img_ = ants.apply_transforms(t1, tsfer, tf3['fwdtransforms'], 'bSpline')
-    img__ = ants.copy_image_info(tmp_origin, ants.image_clone(img_))
-    img__.to_file(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/T1B_inT1w.nii.gz')
-    img_ = ants.apply_transforms(t1, img_, tf2['invtransforms'], 'bSpline')
-    img_ = ants.apply_transforms(tmp, img_, tf1['invtransforms'], 'bSpline')
-    img__ = ants.copy_image_info(tmp_origin, img_)
-    img__.to_file(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/T1B_inNMT.nii.gz')
-
-    pi_ = ants.apply_transforms(t1, pi, tf3['fwdtransforms'], 'bSpline')
-    pi__ = ants.copy_image_info(tmp_origin, ants.image_clone(pi_))
-    pi__.to_file(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/blockface_inT1w.nii.gz')
-    pi_ = ants.apply_transforms(t1, pi_, tf2['invtransforms'], 'bSpline')
-    pi_ = ants.apply_transforms(tmp, pi_, tf1['invtransforms'], 'bSpline')
-    pi__ = ants.copy_image_info(tmp_origin, pi_)
-    pi__.to_file(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/blockface_inNMT.nii.gz')
-    total_time = end_time - start_time
-    print(f"total time：{total_time:.2f}s")
-
-def atlas_reg_noT1w_missing(subject,method='Method A (CC)_Lesion',p=0,LR=None):
-    print('no MRI')
-    fluor_CONFIG['output_dir']=subject
-    if not os.path.exists(fluor_CONFIG['output_dir']+'/reg3D/'+method):
-        os.mkdir(fluor_CONFIG['output_dir']+'/reg3D/'+method)
-    if not os.path.exists(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/'):
-        os.mkdir(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/')
-    if not os.path.exists(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/xfms/'):
-        os.mkdir(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/xfms/')
-    tsfer = ants.image_read(fluor_CONFIG['output_dir'] + '/reg3D/T1likeB_c.nii.gz')
-    pi=ants.image_read(fluor_CONFIG['output_dir']+'/reg3D/b_recon_oc_scale_alignMRI.nii.gz')
-    mask = ants.image_read(fluor_CONFIG['output_dir'] + '/reg3D/atlas/B_mask.nii.gz')
-    mask_data=mask.numpy().copy()
-    les=int(mask_data.shape[1] * p)
-    mask_data[:,0:les,:]=0
-    mask_data[:, mask_data.shape[1]-les:mask_data.shape[1], :] = 0
-    mask[:,:,:]=mask_data
-    pi = ants.mask_image(pi, mask)
-    tsfer = ants.mask_image(tsfer, mask)
-    pi.to_file(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/B_Lesion_'+str(p)+'.nii.gz')
-    tsfer.to_file(fluor_CONFIG['output_dir'] + '/reg3D/' + method + '/atlas/T1B_Lesion'+str(p)+'.nii.gz')
-    tmp_ = ants.image_read('template/NMT/NMT_brain/NMT_v2.0_sym_SS.nii.gz')
-    atlas3=ants.image_read('template/NMT/NMT_brain/level4/CHARM_4_in_NMT_v2.0_sym.nii.gz')
-    atlas4=ants.image_read('template/NMT/NMT_brain/level4/SARM_4_in_NMT_v2.0_sym.nii.gz')
-    tsfer, pi, tmp, atlas3, atlas4 = reset_img([tsfer, pi, tmp_, atlas3, atlas4])
-    start_time = time.time()
-    if p>=0.3:
-        type_reg='Similarity'
-    elif p>=0.2:
-        type_reg='Affine'
-    else:
-        type_reg='SyN'
-    print(type_reg)
-    tf_mask = ants.registration(tsfer,tmp, type_of_transform=type_reg,aff_metric='mattes',
-                            reg_iterations=(40,20,0),outprefix=fluor_CONFIG['output_dir']+'/reg3D/'+method+'/xfms/mask_PItoT1w_Affine_',verbose=False)
-    mask_ = ants.apply_transforms(tmp, mask, tf_mask['invtransforms'], 'multiLabel')
-    mask_.to_file(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/mask_affinetoNMT.nii.gz')
-    # mask_=mask
-    tmp_=ants.mask_image(tmp, mask_)
-    tmp_.to_file(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/NMT.nii.gz')
-
-    tf = ants.registration(tsfer,tmp_, 'SyN',syn_metric='mattes',syn_sampling=32,outprefix=fluor_CONFIG['output_dir']+'/reg3D/'+method+'/xfms/atlas_PItoNMT_',
-                            reg_iterations=(2400,1200,40),flow_sigma=3,total_sigma=0)
-    end_time = time.time()
-    tf['warpedmovout'].to_file(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/TMP_inT1B.nii.gz')
-    ####################################################################
-    atlas3_ = ants.apply_transforms(pi, atlas3, tf['fwdtransforms'], 'multiLabel')
-    atlas3_.to_file(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/CHARM4_inB.nii.gz')
-    atlas4_ = ants.apply_transforms(pi, atlas4, tf['fwdtransforms'], 'multiLabel')
-    atlas4_.to_file(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/SARM4_inB.nii.gz')
-    img_ = ants.apply_transforms(tmp, pi, tf['invtransforms'], 'bSpline')
-    img_=ants.copy_image_info(tmp_, img_)
-    img_.to_file(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/blockface_inNMT.nii.gz')
-    tsfer_ = ants.apply_transforms(tmp, tsfer, tf['invtransforms'], 'bSpline')
-    tsfer_ = ants.copy_image_info(tmp_, tsfer_)
-    tsfer_.to_file(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/T1B_inNMT.nii.gz')
-    total_time = end_time - start_time
-    print(f"total time：{total_time:.2f}s")
 
 def get_fslice_mask(img,hole_size=50):
     isPlot=False

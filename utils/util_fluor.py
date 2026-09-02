@@ -285,16 +285,43 @@ def atlas_reg_noT1w():
 
 
 def get_fslice_mask(img,hole_size=50):
+    """
+    Extract a clean binary tissue foreground mask from a 2D section slice.
+
+    Workflow:
+      1. Apply Mean Shift Filtering (pyrMeanShiftFiltering) to smooth textural noise while preserving tissue edges.
+      2. Perform initial low-intensity thresholding (threshold=10) and morphological erosion (3x3 kernel).
+      3. Detect closed contour regions and fill small holes/voids (area <= hole_size) via polygon filling (fillPoly).
+      4. Compute Otsu's adaptive threshold mask and merge with the hole-filled mask.
+      5. Apply morphological opening (2 iterations) to eliminate isolated noise and smooth object contours.
+      6. Binarize mask values to {0, 1} and return.
+
+    :param img: Input 2D grayscale slice image (NumPy array).
+    :param hole_size: Maximum area threshold (in pixels) for filling small internal holes.
+    :return: Binary foreground mask with values in {0, 1}.
+    """
     isPlot=False
     kernel2 = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))  # ksize=5,5
+
+    # =========================================================================
+    # Mean Shift Edge-Preserving Smoothing
+    # =========================================================================
+    # Convert grayscale to RGB to meet pyrMeanShiftFiltering input requirements
     image = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
     shifted = cv2.pyrMeanShiftFiltering(image, 21, 51)
     img = cv2.cvtColor(shifted, cv2.COLOR_RGB2GRAY)
     # gray = util.invert(img)
     gray=img
+
+    # =========================================================================
+    # Binary Thresholding and Morphological Erosion
+    # =========================================================================
     ret, mask = cv2.threshold(gray, 10, 255,  cv2.THRESH_BINARY)
     threshod_image_erode = cv2.erode(mask, kernel2, iterations=1)
 
+    # =========================================================================
+    # Find and Fill Small Holes/Voids (area <= hole_size)
+    # =========================================================================
     contours, _ = cv2.findContours(threshod_image_erode, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     cv_contours = []
     for contour in contours:
@@ -303,8 +330,14 @@ def get_fslice_mask(img,hole_size=50):
             cv_contours.append(contour)
         else:
             continue
+
+    # Fill small internal holes with white (255)
     threshod_image_erode=cv2.fillPoly(threshod_image_erode, cv_contours, 255)
     plot_show(gray, threshod_image_erode, isPlot)
+
+    # =========================================================================
+    # Otsu Adaptive Thresholding and Mask Combination
+    # =========================================================================
     ret, threshod_image = cv2.threshold(gray, 10, 255, cv2.THRESH_BINARY+ cv2.THRESH_OTSU)
     threshod_image=threshod_image_erode+threshod_image
     plot_show(gray, threshod_image, isPlot)
@@ -312,6 +345,10 @@ def get_fslice_mask(img,hole_size=50):
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
     opening = cv2.morphologyEx(threshod_image, cv2.MORPH_OPEN, kernel, iterations=2)
     plot_show(img, opening, isPlot)
+
+    # =========================================================================
+    # Convert Mask Values to Binary {0, 1}
+    # =========================================================================
     mask=opening
     mask[mask>0]=1
     return mask
@@ -335,47 +372,101 @@ def normalization(data):
 
 
 def get_maskBywatershed(img):
+    """
+    Segment foreground tissue and separate adjacent/touching structures using marker-controlled Watershed segmentation.
+
+    Workflow:
+      1. Invert input image and compute initial foreground mask via Otsu's thresholding.
+      2. Perform erosion, hole filling, and morphological opening to clean boundary noise.
+      3. Compute Euclidean Distance Transform (EDT) and threshold to isolate "sure foreground" markers.
+      4. Dilate the mask to determine "sure background", then subtract sure foreground to identify the "unknown" boundary zone.
+      5. Label connected components to create seed markers and execute OpenCV's Watershed algorithm.
+      6. Assemble and return the resulting multi-label / segmented object mask.
+
+    :param img: Input 2D grayscale image (NumPy array).
+    :return: Watershed segmented label mask (NumPy array).
+    """
     isPlot=False
+    # =========================================================================
+    # Image Inversion, Color Conversion, and Otsu Thresholding
+    # =========================================================================
     gray = util.invert(img)
+    # Convert grayscale to 3-channel RGB as required by cv2.watershed
     image = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
-    # gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
+
+    # Compute binary threshold using Otsu's method
     ret, threshod_image = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     # ret, threshod_image = cv2.threshold(gray, 0, 255, cv2.THRESH_TRIANGLE)
     plot_show(img, threshod_image, isPlot)
+
+    # =========================================================================
+    # Erosion, Hole Filling, and Morphological Opening
+    # =========================================================================
     kernel2 = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))  # ksize=5,5 3,3
+
+    # =========================================================================
+    # Mean Shift Edge-Preserving Smoothing
+    # =========================================================================
+    # Convert grayscale to RGB to meet pyrMeanShiftFiltering input requirements
     threshod_image_erode = cv2.erode(threshod_image, kernel2, iterations=1)
     threshod_image = fill_hole(threshod_image_erode)+threshod_image
+
+    # Fill internal holes and merge with original threshold map
     threshod_image[threshod_image>0]=255
 
+    # Apply morphological opening to remove small disconnected background noise
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
     opening = cv2.morphologyEx(threshod_image, cv2.MORPH_OPEN, kernel, iterations=2)
     print('MORPH_OPEN')
     plot_show(img, opening, isPlot)
-    # opening=threshod_image
+
+    # =========================================================================
+    # Distance Transform to Identify Sure Foreground Seeds
+    # =========================================================================
+    # Compute Euclidean distance transform (L2 distance metric, 5x5 mask)
     dist_transform = cv2.distanceTransform(opening, cv2.DIST_L2, 5)
-    # Normalize the distance image for range = {0.0, 1.0}
+
+    # Normalize distance transform map to range [0.0, 1.0]
     cv2.normalize(dist_transform, dist_transform, 0, 1.0, cv2.NORM_MINMAX)
     dist_transform_threshold_image = dist_transform.copy()
     print('dist_transform_threshold_image')
     plot_show(img, dist_transform_threshold_image, isPlot)
-    # dist_transform_threshold_image[dist_transform_threshold_image < 0.1] = 0
-    # dist_transform_threshold_image[dist_transform_threshold_image >= 0.1] = 255
     dist_transform_threshold_image[dist_transform_threshold_image < 0.03] = 0
     dist_transform_threshold_image[dist_transform_threshold_image >= 0.03] = 255
     dist_transform_threshold_image = touint8(dist_transform_threshold_image)
 
+    # =========================================================================
+    # Determine Sure Background and Unknown Boundary Regions
+    # =========================================================================
+    # Dilate opening mask to find sure background
     dilate_image = cv2.dilate(opening, kernel, iterations=2)
+
+    # Unknown region = Sure background - Sure foreground
     unknown = cv2.subtract(dilate_image, dist_transform_threshold_image)
 
+    # =========================================================================
+    # Marker Labeling and Watershed Execution
+    # =========================================================================
+    # Label connected components of sure foreground (objects labeled 1, 2, ...)
     ret2, markers = cv2.connectedComponents(dist_transform_threshold_image)
+
+    # Add 1 to all labels so sure background is labeled 1 instead of 0
     markers = markers + 1
+    # Mark unknown boundary regions with 0 for watershed exploration
     markers[unknown == 255] = 0
+
+    # Optional marker visualization mapping
     markers_copy = markers.copy()
     markers_copy[markers == 0] = 150
     markers_copy[markers == 1] = 0
     markers_copy[markers > 1] = 255
+
+    # Run Watershed algorithm (boundaries will be marked with -1)
     markers = cv2.watershed(image, markers)
 
+    # =========================================================================
+    # Assemble Segmented Label Mask
+    # =========================================================================
     mask = np.zeros_like(gray, dtype=np.uint8)
     for obj_id in np.unique(markers):
         if obj_id == 0:
@@ -389,7 +480,6 @@ def get_maskBywatershed(img):
 
 
 def fill_hole(img):
-
     mask = 255 - img
     marker = np.zeros_like(img)
     marker[0, :] = 255
@@ -410,26 +500,47 @@ def fill_hole(img):
     return dst
 
 def centerxy_img(image):
+    """
+    Calculate the center coordinates (X, Y) of the foreground tissue objects in a 2D image.
+    """
+    # =========================================================================
+    # Preprocess and Binarize Image
+    # =========================================================================
+    # Clamp negative pixel values and cast to 8-bit unsigned integer
     image[image < 0] = 0
     image = image.astype(np.uint8)
     thresh = cv2.threshold(image, 20, 255, cv2.THRESH_BINARY)[1]
+
+    # =========================================================================
+    # Extract External Contours
+    # =========================================================================
     cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     cnts = imutils.grab_contours(cnts)
     xs = []
     ys = []
-    # loop over the contours
+
+    # =========================================================================
+    # Compute Centroid for Each Detected Contour
+    # =========================================================================
     for c in cnts:
-        # compute the center of the contour
+        # Calculate spatial moments of the contour
         M = cv2.moments(c)
         if not M["m00"] == 0:
+            # Centroid X = m10 / m00 (weighted X coordinate)
             cX = int(M["m10"] / M["m00"])
             xs.append(cX)
+            # Centroid Y = m01 / m00 (weighted Y coordinate)
             cY = int(M["m01"] / M["m00"])
             ys.append(cY)
+
+    # =========================================================================
+    # Calculate Global Average Centroid Coordinates
+    # =========================================================================
     try:
         x = int(np.mean(xs))
         y = int(np.mean(ys))
     except:
+        # Fallback coordinates if no contours or moments are detected
         x=0
         y=0
     return x, y

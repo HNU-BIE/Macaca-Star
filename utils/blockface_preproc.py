@@ -2,7 +2,6 @@ import os
 import re
 import shutil
 from pathlib import Path
-
 from matplotlib import pyplot as plt
 from sklearn.metrics import mean_squared_error
 import albumentations as A
@@ -12,219 +11,376 @@ import numpy as np
 import utils.Logger as loggerz
 from utils.util import touint8, reset_img
 import yaml
-from utils.util_fluor import atlas_reg_ByT1w, atlas_reg_noT1w, get_maskBywatershed, centerxy_img, atlas_reg_ByT1w_v2, \
-    translate_bycenter, get_bmask, reassign_anomalous_pixels, atlas_reg_ByT1w_missing
+from utils.util_fluor import atlas_reg_ByT1w, atlas_reg_noT1w, get_maskBywatershed, centerxy_img, \
+    translate_bycenter, get_bmask, reassign_anomalous_pixels
 from memory_profiler import memory_usage
 import time
 
-blockface_YAML_PATH = os.getcwd() + '/config/blockface_config.yaml'
-blockface_CONFIG = yaml.safe_load(open(blockface_YAML_PATH, 'r'))
-fluor_YAML_PATH = os.getcwd() + '/config/fluor_sections_config.yaml'
-fluor_CONFIG = yaml.safe_load(open(fluor_YAML_PATH, 'r'))
-MRI_YAML_PATH = os.getcwd() + '/config/MRI_config.yaml'
-MRI_CONFIG = yaml.safe_load(open(MRI_YAML_PATH, 'r'))
+# ==================== Load YAML Configuration Files ====================
+# 1. Load block-face volume reconstruction and alignment configuration
+blockface_YAML_PATH = os.path.join(os.getcwd(), 'config', 'blockface_config.yaml')
+with open(blockface_YAML_PATH, 'r', encoding='utf-8') as f:
+    blockface_CONFIG = yaml.safe_load(f)
+
+# 2. Load 2D fluorescence section processing and cross-modal translation configuration
+fluor_YAML_PATH = os.path.join(os.getcwd(), 'config', 'fluor_sections_config.yaml')
+with open(fluor_YAML_PATH, 'r', encoding='utf-8') as f:
+    fluor_CONFIG = yaml.safe_load(f)
+
+# 3. Load reference structural MRI preprocessing and registration configuration
+MRI_YAML_PATH = os.path.join(os.getcwd(), 'config', 'MRI_config.yaml')
+with open(MRI_YAML_PATH, 'r', encoding='utf-8') as f:
+    MRI_CONFIG = yaml.safe_load(f)
 
 def recon_blockface():
+    """
+    Reconstruct a 3D block-face NIfTI volume from sequential 2D serial slice images.
+
+    Workflow:
+      1. Locate the 2D block-face image directory (2Dblockface/).
+      2. Discover and sort all qualified slice PNG files numerically based on section index numbers.
+      3. Allocate an empty 3D NumPy array [H, num_slices, W] for volume assembly.
+      4. Read each 2D slice as a grayscale image and stack sequentially along axis 1.
+      5. Convert the stacked 3D NumPy array into an ANTsImage object and export as a NIfTI volume (b.nii.gz).
+    """
+    # Initialize pipeline logger
     logger = loggerz.get_logger()
     logger.info('3D recon blockface')
+
+    #  Locate 2D slice directory and sort files by numerical section index
     imgs_path = Path(blockface_CONFIG['subject_dir']+'/2Dblockface/')
     files = sorted(
         imgs_path.glob('Section*_qualified_b.png'),
         key=lambda p: int(re.search(r'Section(\d+)', p.stem).group(1))
     )
+
+    # Initialize 3D volumetric array: [Height=500, Slices=len(files), Width=500]
     b_data=np.zeros((500,len(files),500))
-    # 要完整路径字符串
+    # Convert Path objects to full string path representations
     files = [str(f) for f in files]
+
+    # Load 2D grayscale slices and stack them sequentially along axis 1
     for i,img_path in enumerate(files):
         slice_tmp = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
         b_data[:, i, :] = slice_tmp.copy()
+
+    # Convert NumPy array to ANTsImage and save as NIfTI volume
     b=ants.from_numpy(b_data)
     b.to_file(blockface_CONFIG['subject_dir']+'/b.nii.gz')
 
 def align_Bcenter():
-    # img=ants.image_read(blockface_CONFIG['subject_dir']+'/b.nii.gz')
-    img = ants.image_read(blockface_CONFIG['subject_dir'] + '/b_recon.nii.gz')
+    """
+    Detect and correct slice-to-slice cutting shifts (jitter) in serial block-face imaging.
+
+    Workflow:
+      1. Compute Mean Squared Error (MSE) between consecutive adjacent 2D slices along axis 1.
+      2. Identify abrupt spatial shift boundaries where MSE exceeds a predefined threshold (t = 900).
+      3. Iterate backwards across detected shift points:
+         a. Compute centers of mass for adjacent reference and moving slices.
+         b. Pre-align slice centroids via translational offset (translate_bycenter).
+         c. Refine spatial alignment using Affine registration with Global Correlation metric.
+         d. Propagate cumulative transformations backward to all preceding slices to maintain global continuity.
+      4. Clamp negative interpolation artifacts and export the realigned block-face volume (b_recon.nii.gz).
+    """
+    # Load raw reconstructed block-face volume
+    img=ants.image_read(blockface_CONFIG['subject_dir']+'/b.nii.gz')
     img_data=img.numpy()[:,:,:].copy()
+
+    # =========================================================================
+    # Compute adjacent slice dissimilarity profile (MSE)
+    # =========================================================================
     tmp=[]
     for i in range(img_data.shape[1]-1):
         slice1=img_data[:,i,:]
         slice2 = img_data[:, i+1, :]
         mse=mean_squared_error(slice1, slice2)
         tmp.append(mse)
+
+    # Plot slice-to-slice MSE profile for visual inspection
     plt.plot(tmp)
     plt.show()
+
+    # =========================================================================
+    # Detect significant cutting shift indices
+    # =========================================================================
     tmp=np.array(tmp)
     t=900
     indexs=np.where(tmp>t)[0]
     indexs=np.insert(indexs, 0, 0)
-    # indexs = np.array([0,122])
+
+    # =========================================================================
+    # Backward iterative centroid translation and Affine alignment
+    # =========================================================================
     for i in range(len(indexs)-1,-1,-1):
         mov_data=img_data[:, indexs[i], :].copy()
         mov=ants.from_numpy(mov_data)
         fix_data=img_data[:, indexs[i] + 1, :].copy()
         fix = ants.from_numpy(fix_data)
-        if i+1>len(indexs)-1:
-            end=indexs[len(indexs)-2]
-        else:
-            end = indexs[i-1]
+
+        # Calculate center-of-mass translational offsets (tx, ty)
         basex, basey = ants.get_center_of_mass(fix)
         movx, movy = ants.get_center_of_mass(mov)
         tx = basex - movx
         ty = basey - movy
-        tx=ty=0
+
+        # Apply centroid translation to the moving slice
         mov[:, :] = translate_bycenter(mov[:, :].numpy(), tx, ty)
-        # Translation
+        # Compute fine-scale Affine registration transform
         t = ants.registration(fix, mov,type_of_transform='Affine', aff_metric='GC', aff_sampling=32)
-        # for n in range(indexs[i], end-1, -1):
+
+        # Propagate translation and affine transforms backward to all preceding slices
         for n in range(indexs[i],-1, -1):
             mov = ants.from_numpy(img_data[:, n, :])
             mov[:, :] = translate_bycenter(mov[:, :].numpy(), tx, ty)
             img_data[:, n, :]=ants.apply_transforms(fix,mov,t['fwdtransforms'],'bSpline')[:,:].numpy().copy()
 
+    # =========================================================================
+    # Clean interpolation artifacts and save realigned volume
+    # =========================================================================
     img_data[img_data<0]=0
     img[:,:,:]=img_data
     img.to_file(blockface_CONFIG['subject_dir']+'/b_recon.nii.gz')
 
 def oc_blockface_toNMT():
+    """
+    Perform orientation correction and spatial reference alignment on the reconstructed
+    block-face volume to match standard NMT template coordinate space.
+    """
+    # Load reconstructed block-face volume and reference NMT template
     img=ants.image_read(blockface_CONFIG['subject_dir']+'/b_recon.nii.gz')
     nmt = ants.image_read('template/NMT/NMT_brain/NMT_v2.0_sym_SS.nii.gz')
+
+    # Extract voxel array and permute axes to match anatomical plane order
     img_data=img.numpy()
     tmp = np.transpose(img_data, [2, 0, 1])
-    # tmp=img_data
+
+    # Flip axes along dimensions 1, 2, and 0 to standardize anatomical directions
     tmp=np.flip(tmp,1)
     tmp = np.flip(tmp, 2)
     tmp = np.flip(tmp, 0)
+
+    # Convert re-oriented NumPy array to an ANTsImage object
     img=ants.from_numpy(tmp)
+
+    # Synchronize spatial origin and direction cosines with the NMT reference template
     img.set_origin(nmt.origin)
     img.set_direction(nmt.direction)
+
+    # Save the orientation-corrected block-face volume
     img.to_file(blockface_CONFIG['subject_dir']+'/b_recon_oc.nii.gz')
 
 
 def intensity_c():
+    """
+    Perform intensity enhancement, denoising, and bias field correction on the block-face volume.
+    """
+    # Initialize pipeline logger
     logger = loggerz.get_logger()
     logger.info('Intensity correction')
+
+    # Initialize 2D CLAHE operator from Albumentations
     CLAHE = A.CLAHE(clip_limit=(1.0, 2.0), tile_grid_size=(10, 10), always_apply=True)
+
+    # Load orientation-corrected block-face volume
     img=ants.image_read(blockface_CONFIG['subject_dir']+'/b_recon_oc.nii.gz')
+
+    # Apply 2D CLAHE slice-by-slice along axis 1 for local contrast enhancement
     for i in range(img.shape[1]):
         fslice=img[:,i,:].numpy()
         fslice=touint8(fslice)
         fslice=CLAHE.apply(fslice,clip_limit=2)
         img[:, i, :]=fslice
+
+    # enerate binary foreground mask
     mask=ants.get_mask(img)
+
+    # Apply volumetric spatial denoising within the mask
     img=ants.denoise_image(img,mask)
+
+    # Perform N4 bias field correction to eliminate illumination inhomogeneities
     img=ants.n4_bias_field_correction(img,mask,shrink_factor=2)
     img=ants.mask_image(img,mask)
-    img.to_file(fluor_CONFIG['output_dir']+'/blockface/b_recon_oc_scale_clahe.nii.gz')
+
+    # Save the intensity-corrected and contrast-enhanced block-face volume
+    img.to_file(fluor_CONFIG['output_dir']+'/blockface/b_recon_oc_scale_ic.nii.gz')
 
 def b_alignMRI():
+    """
+    Perform 3D Affine spatial alignment from the preprocessed block-face volume
+    to the reference NMT template (or MRI) space.
+    """
+    # Initialize pipeline logger
     logger = loggerz.get_logger()
     logger.info('blockface align to MRI')
-    b = ants.image_read(fluor_CONFIG['output_dir']+'/blockface/b_recon_oc_scale_clahe.nii.gz')
-    # b = ants.image_read(fluor_CONFIG['output_dir'] + '/blockface/b_recon_oc_scale.nii.gz')
+
+    # Load preprocessed block-face volume and reference NMT template
+    b = ants.image_read(fluor_CONFIG['output_dir']+'/blockface/b_recon_oc_scale_ic.nii.gz')
     b=ants.from_numpy(b.numpy())
     nmt = ants.image_read('template/NMT/NMT_brain/NMT_v2.0_sym_SS.nii.gz')
-    # nmt_=nmt
     nmt_=ants.from_numpy(nmt.numpy())
+
+    # Perform 3D Affine registration from block-face (moving) to NMT space (fixed)
     t2 = ants.registration(nmt_, b, 'Affine', aff_metric='GC',aff_sampling=32)
+
+    # Apply forward transformation using b-spline interpolation
     b_ = ants.apply_transforms(nmt_, b, t2['fwdtransforms'],'bSpline')
+
+    # Save the affine transformation matrix for downstream inverse mapping
     shutil.copyfile(t2['fwdtransforms'][0], fluor_CONFIG['output_dir']+'/reg3D/xfms/b_regt1.mat')
+
+    # Generate foreground mask and remove background voxels
     mask=ants.get_mask(b_,10)
     b_=ants.mask_image(b_,mask)
-    # b_=ants.denoise_image(b_,mask)
+
+    # Apply two-stage N4 bias field correction to eliminate residual illumination gradients
     b_=ants.n4_bias_field_correction(b_,mask,shrink_factor=4)
     b_ = ants.n4_bias_field_correction(b_, mask, shrink_factor=2)
+
+    # Synchronize spatial header metadata with the reference NMT template
     b_=ants.copy_image_info(nmt,b_)
+
+    # Export the affine-aligned block-face volume
     b_.to_file(fluor_CONFIG['output_dir'] + '/reg3D/b_recon_oc_scale_alignMRI.nii.gz')
 
 def correct_t1like():
+    """
+    Mask the synthesized T1-like block-face volume to remove non-brain background noise.
+    """
     tsfer=ants.image_read(fluor_CONFIG['output_dir']+'/reg3D/T1likeB.nii.gz')
     b=ants.image_read(fluor_CONFIG['output_dir']+'/reg3D/b_recon_oc_scale_alignMRI.nii.gz')
     mask=ants.get_mask(b,10)
     img = ants.mask_image(tsfer, mask)
-    # t = ants.registration(b, img, 'SyN',syn_metric='CC',reg_iterations=(40,20,20),flow_sigma=3,total_sigma=0.6,syn_sampling=4)
-    # img=ants.apply_transforms(b,img,t['fwdtransforms'],'bSpline')
     img.to_file(fluor_CONFIG['output_dir']+'/reg3D/T1likeB_c.nii.gz')
     mask.to_file(fluor_CONFIG['output_dir']+'/reg3D/atlas/B_mask.nii.gz')
 
 def blockface_3Dreg():
+    """
+    Execute 3D anatomical registration of the block-face volume to the NMT atlas space.
+
+    Dynamically selects between:
+      1. MRI-guided registration (via subject-specific T1w MRI) with memory and runtime profiling.
+      2. MRI-free registration (direct template alignment) when subject MRI is unavailable.
+    """
+    # 1. Initialize pipeline logger
     logger = loggerz.get_logger()
     logger.info('fMOST PI register to NMT')
+
+    # =========================================================================
+    # Branch A: MRI-guided registration pipeline
+    # =========================================================================
     if MRI_CONFIG['MRI-guided']:
         logger.warning('MRI-guided registration')
         start_time = time.time()
+
+        # Profile memory consumption during T1w-guided registration (sample interval: 5.0s)
         memory_usage_data = memory_usage(atlas_reg_ByT1w, interval=5.0)
-        # memory_usage_data = memory_usage(atlas_reg_ByT1w_v2, interval=5.0)
-        # memory_usage_data = memory_usage(atlas_reg_ByT1w_missing, interval=5.0)
         end_time = time.time()
+
+        # Compute and log average memory consumption
         average_memory_usage = sum(memory_usage_data) / len(memory_usage_data)
         print(f"average_memory : {average_memory_usage:.2f}MB")
         logger.warning(f"average_memory : {average_memory_usage:.2f}MB")
+
+        # Compute and log total execution time
         total_time = end_time - start_time
         print(f"total time：{total_time:.2f}s")
         logger.warning(f"total time : {total_time:.2f}s")
         logger.warning('MRI-guided registration end')
+
+    # =========================================================================
+    # Branch B: MRI-free registration pipeline (direct template alignment)
+    # =========================================================================
     else:
         logger.warning('no MRI-guided registration')
+
+        # Execute direct registration without in vivo MRI prior
         atlas_reg_noT1w()
         logger.warning('no MRI-guided registration end')
 
 
 def b_invetalignMRI():
+    """
+    Invert spatial transformations to map registered NMT templates, anatomical atlases,
+    and synthetic volumes back into the native block-face coordinate space (OriginB).
+
+    Workflow:
+      1. Load native block-face origin volume (b_recon_oc_scale_clahe.nii.gz) and aligned volume.
+      2. Load all registered atlases, masks, and intensity volumes in block-face aligned space.
+      3. Determine inverse transformation:
+         - If isAffine=True: Compute fresh Affine registration from aligned to native block-face space.
+         - If isAffine=False: Invert the precomputed affine matrix (b_regt1.mat).
+      4. Loop through all atlases, masks, and intensity images, apply inverse transforms,
+         synchronize image headers with native geometry, and export to blockface/atlas/.
+    """
+    # Initialize pipeline logger
     logger = loggerz.get_logger()
     logger.info('blockface inverse align to MRI')
     method=''
     isAffine=True
+
+    # Ensure output directory exists
+    atlas_save_dir = os.path.join(fluor_CONFIG['output_dir'], 'blockface', 'atlas')
+    os.makedirs(atlas_save_dir, exist_ok=True)
+
+    # Load native block-face origin volume and aligned block-face volume
     b_origin = ants.image_read(fluor_CONFIG['output_dir'] + '/blockface/b_recon_oc_scale_clahe.nii.gz')
     b=ants.from_numpy(b_origin.numpy())
     b_alignMRI = ants.image_read(fluor_CONFIG['output_dir']+'/reg3D/b_recon_oc_scale_alignMRI.nii.gz')
     b_ = ants.from_numpy(b_alignMRI.numpy())
-    atlas=ants.image_read(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/D99_inblockface.nii.gz')
+
+    # Load registered atlases and masks in block-face aligned space
+    atlas=ants.image_read(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/CHARM6_inblockface.nii.gz')
     atlas1 = ants.image_read(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/segmentation_inblockface.nii.gz')
     atlas1 = ants.from_numpy(atlas1.numpy())
-    atlas2 = ants.image_read(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/SARM2_inblockface.nii.gz')
-    atlas3 = ants.image_read(fluor_CONFIG['output_dir'] + '/reg3D/' + method + '/atlas/SARM6_inblockface.nii.gz')
+    atlas2 = ants.image_read(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/SARM6_inblockface.nii.gz')
     atlas4 = ants.image_read(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/cerebellum_mask_inblockface.nii.gz')
     atlas4 = ants.from_numpy(atlas4.numpy())
-    atlas6 = ants.image_read(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/CHARM1_inblockface.nii.gz')
     atlas7 = ants.image_read(fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/atlas/segmentation_edit_inblockface.nii.gz')
     atlas7 = ants.from_numpy(atlas7.numpy())
+
+    # Load registered template and synthetic T1 volume
     nmt = ants.image_read(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/NMT_inblockface.nii.gz')
     blikef = ants.image_read(fluor_CONFIG['output_dir']+'/reg3D/T1wlikeB_c.nii.gz')
-    if isAffine:
-        t = ants.registration(b, b_, type_of_transform='Affine')
-        atlas_ = ants.apply_transforms(b, atlas, t['fwdtransforms'],'multiLabel')
-        atlas1_ = ants.apply_transforms(b, atlas1, t['fwdtransforms'], 'multiLabel')
-        atlas2_ = ants.apply_transforms(b, atlas2, t['fwdtransforms'], 'multiLabel')
-        atlas3_ = ants.apply_transforms(b, atlas3, t['fwdtransforms'], 'multiLabel')
-        atlas4_ = ants.apply_transforms(b, atlas4, t['fwdtransforms'], 'multiLabel')
-        nmt_ = ants.apply_transforms(b, nmt, t['fwdtransforms'], 'bSpline')
-        atlas6_ = ants.apply_transforms(b, atlas6, t['fwdtransforms'], 'multiLabel')
-        atlas7_ = ants.apply_transforms(b, atlas7, t['fwdtransforms'], 'multiLabel')
-        blikef_ = ants.apply_transforms(b, blikef, t['fwdtransforms'], 'bSpline')
-    else:
-        atlas_ = ants.apply_transforms(b, atlas, [fluor_CONFIG['output_dir']+'/reg3D/'+method+'/xfms/b_regt1.mat'],'multiLabel',whichtoinvert=[True])
-        atlas1_ = ants.apply_transforms(b, atlas1, [fluor_CONFIG['output_dir']+'/reg3D/'+method+'/xfms/b_regt1.mat'], 'multiLabel', whichtoinvert=[True])
-        atlas2_ = ants.apply_transforms(b, atlas2, [fluor_CONFIG['output_dir']+'/reg3D/'+method+'/xfms/b_regt1.mat'], 'multiLabel',whichtoinvert=[True])
-        atlas3_ = ants.apply_transforms(b, atlas3,[fluor_CONFIG['output_dir'] + '/reg3D/' + method + '/xfms/b_regt1.mat'],'multiLabel', whichtoinvert=[True])
-        atlas4_ = ants.apply_transforms(b, atlas4, [fluor_CONFIG['output_dir']+'/reg3D/'+method+'/xfms/b_regt1.mat'], 'multiLabel', whichtoinvert=[True])
-        nmt_ = ants.apply_transforms(b, nmt, [fluor_CONFIG['output_dir']+'/reg3D/'+method+'/xfms/b_regt1.mat'], 'bSpline', whichtoinvert=[True])
-        atlas6_ = ants.apply_transforms(b, atlas6, [fluor_CONFIG['output_dir']+'/reg3D/'+method+'/xfms/b_regt1.mat'], 'multiLabel', whichtoinvert=[True])
-        atlas7_ = ants.apply_transforms(b, atlas7, [fluor_CONFIG['output_dir'] + '/reg3D/'+method+'/xfms/b_regt1.mat'],'multiLabel', whichtoinvert=[True])
-        blikef_ = ants.apply_transforms(b, blikef, [fluor_CONFIG['output_dir']+'/reg3D/'+method+'/xfms/b_regt1.mat'], 'bSpline', whichtoinvert=[True])
-    atlas_.to_file(fluor_CONFIG['output_dir']+'/blockface/atlas/D99_inOriginB'+method+'.nii.gz')
-    atlas1_ = ants.copy_image_info(b_origin, atlas1_)
-    atlas1_.to_file(fluor_CONFIG['output_dir']+'/blockface/atlas/segmentation_inOriginB'+method+'.nii.gz')
-    atlas2_.to_file(fluor_CONFIG['output_dir']+'/blockface/atlas/SARM2_inOriginB'+method+'.nii.gz')
-    atlas3_.to_file(fluor_CONFIG['output_dir'] + '/blockface/atlas/SARM6_inOriginB' + method + '.nii.gz')
-    atlas4_ = ants.copy_image_info(b_origin, atlas4_)
-    atlas4_.to_file(fluor_CONFIG['output_dir']+'/blockface/atlas/cerebellum_mask_inOriginB'+method+'.nii.gz')
-    nmt_=ants.copy_image_info(b_origin,nmt_)
-    nmt_.to_file(fluor_CONFIG['output_dir']+'/blockface/atlas/TMP_inOriginB'+method+'.nii.gz')
-    atlas6_.to_file(fluor_CONFIG['output_dir']+'/blockface/atlas/CHARM1_inOriginB'+method+'.nii.gz')
-    atlas7_.to_file(fluor_CONFIG['output_dir'] + '/blockface/atlas/segmentation_edit_inOriginB'+method+'.nii.gz')
-    blikef_ = ants.copy_image_info(b_origin, blikef_)
-    blikef_.to_file(fluor_CONFIG['output_dir']+'/blockface/atlas/T1wlikeB_inOriginB'+method+'.nii.gz')
 
+    # =========================================================================
+    # Step 6: Determine Transformation Fields (Compute Affine or Invert Matrix)
+    # =========================================================================
+    if isAffine:
+        # Register aligned volume back to native volume using Affine
+        t = ants.registration(fixed=b, moving=b_, type_of_transform='Affine')
+        transform_list = t['fwdtransforms']
+        invert_flags = [False]
+    else:
+        # Invert the precomputed affine transformation matrix
+        transform_list = [fluor_CONFIG['output_dir'] + '/reg3D/' + method + '/xfms/b_regt1.mat']
+        invert_flags = [True]
+
+    # =========================================================================
+    # Step 7: Loop over Atlases, Masks, and Images (Apply Inverse Transforms)
+    # =========================================================================
+    # Mapping: {filename_prefix: (image_object, interpolator_type)}
+    items_to_transform = {
+        f'CHARM6_inOriginB{method}': (atlas, 'multiLabel'),
+        f'segmentation_inOriginB{method}': (atlas1, 'multiLabel'),
+        f'SARM6_inOriginB{method}': (atlas2, 'multiLabel'),
+        f'cerebellum_mask_inOriginB{method}': (atlas4, 'multiLabel'),
+        f'TMP_inOriginB{method}': (nmt, 'bSpline'),
+        f'segmentation_edit_inOriginB{method}': (atlas7, 'multiLabel'),
+        f'T1wlikeB_inOriginB{method}': (blikef, 'bSpline'),
+    }
+
+    for filename, (cur_img, interp) in items_to_transform.items():
+        # Apply inverse transform to map into native block-face space
+        img_out = ants.apply_transforms(
+            fixed=b,
+            moving=cur_img,
+            transformlist=transform_list,
+            interpolator=interp,
+            whichtoinvert=invert_flags
+        )
+        # Synchronize spatial header information with native block-face geometry
+        img_out = ants.copy_image_info(b_origin, ants.image_clone(img_out))
+        img_out.to_file(os.path.join(atlas_save_dir, f"{filename}.nii.gz"))
 
 
 def repair_blockface():
@@ -251,7 +407,7 @@ def repair_blockface():
     b_rmc_repair.to_file(fluor_CONFIG['output_dir']+'/blockface/b_recon_oc_scale_rmc_repair.nii.gz')
 
 def seg_byt1pi():
-    method = 'Method A (CC)'
+    method = ''
     MRI_YAML_PATH = os.getcwd() + '/config/MRI_config.yaml'
     MRI_CONFIG = yaml.safe_load(open(MRI_YAML_PATH, 'r'))
     if fluor_CONFIG['atlas_repair_bySeg']:
@@ -321,7 +477,7 @@ def seg_byt1pi():
 def repair_atlas():
     logger = loggerz.get_logger()
     logger.info('repair atlas')
-    method='Method A (CC)'
+    method=''
     pi=ants.image_read(fluor_CONFIG['output_dir']+'/reg3D/b_recon_oc_scale_alignMRI.nii.gz')
     tipi=ants.image_read(fluor_CONFIG['output_dir']+'/reg3D/T1likeB_c.nii.gz')
     tmp=ants.image_read(fluor_CONFIG['output_dir']+'/reg3D/'+method+'/atlas/NMT_inblockface.nii.gz')
@@ -440,7 +596,7 @@ def repair_seg_inBlockface():
             if len(masks) == 2:
                 centroids=[]
                 for idx, mask in enumerate(masks, 2):
-                    h_idx, w_idx = np.where(mask > 0)  # 所有前景像素坐标
+                    h_idx, w_idx = np.where(mask > 0)
                     centroid = ( w_idx.mean(),h_idx.mean())  # (row, col)
                     centroids.append(centroid)
                 min_h, min_w = min(centroids)
@@ -453,8 +609,8 @@ def repair_seg_inBlockface():
             if len(masks) == 3:
                 centroids=[]
                 for idx, mask in enumerate(masks, 2):
-                    h_idx, w_idx = np.where(mask > 0)  # 所有前景像素坐标
-                    centroid = ( w_idx.mean(),h_idx.mean())  # (row, col)
+                    h_idx, w_idx = np.where(mask > 0)
+                    centroid = ( w_idx.mean(),h_idx.mean())
                     centroids.append(centroid)
                 min_h, min_w = min(centroids)
                 for idx, mask in enumerate(masks, 2):
@@ -466,8 +622,8 @@ def repair_seg_inBlockface():
                     area=len(mask[mask>0])
                     if area<20:
                         continue
-                    h_idx, w_idx = np.where(mask > 0)  # 所有前景像素坐标
-                    centroid = ( w_idx.mean(),h_idx.mean())  # (row, col)
+                    h_idx, w_idx = np.where(mask > 0)
+                    centroid = ( w_idx.mean(),h_idx.mean())
                     centroids.append(centroid)
                 min_h, min_w = min(centroids)
                 for idx, mask in enumerate(masks, 2):
@@ -477,106 +633,3 @@ def repair_seg_inBlockface():
         seg_data[:, i, :]=seg_slice
     seg[:,:,:]=seg_data
     seg.to_file(path+'/blockface/atlas/segmentation_edit_inOriginB_.nii.gz')
-
-
-# def repair_seg_inBlockface():
-#     img = ants.image_read(fluor_CONFIG['output_dir'] + '/blockface/atlas/segmentation_edit_inOriginB.nii.gz')
-#     b=ants.image_read(fluor_CONFIG['output_dir']+'/blockface/b_recon_oc_scale_rmc_repair.nii.gz')
-#     mask=ants.get_mask(b)
-#     img=ants.copy_image_info(b,img)
-#     img_=ants.mask_image(img,mask)
-#     img_.to_file(fluor_CONFIG['output_dir']+'/blockface/tttt.nii.gz')
-#     img_data=img_.numpy()
-#     index=None
-#     # index = 154
-#     for i in range(img.shape[1]-1,0,-1):
-#         slice=img_data[:,i,:]
-#         # print(set(np.unique(slice).astype(int)))
-#         if set(np.unique(slice).astype(int)) == {0,160, 210, 100} or set(np.unique(slice).astype(int)) == {0,160, 210, 100,150,200}:
-#             print(i)
-#             index=i
-#             print(np.unique(slice).astype(int))
-#             break
-#     # index=152
-#     for ii in range(index,img.shape[1]):
-#         slice = img_data[:, ii, :]
-#         if 160 in np.unique(slice).astype(int) or 210 in np.unique(slice).astype(int):
-#             remaining_values = np.setdiff1d(np.unique(slice).astype(int), np.array([0,160, 210, 100]))
-#             print(remaining_values)
-#             tmp=img_data[:, ii, :]
-#             tmp[tmp==150]=100
-#             tmp[tmp == 200] = 100
-#     index=None
-#     for i in range(img.shape[1]-1,0,-1):
-#         slice=img_data[:,i,:]
-#         if set(np.unique(slice).astype(int)) == {0,2}:
-#             print(i)
-#             index=i
-#             print(np.unique(slice).astype(int))
-#             break
-#     for ii in range(index,img.shape[1]):
-#         slice = img_data[:, ii, :]
-#         if 2 in np.unique(slice).astype(int) :
-#             remaining_values = np.setdiff1d(np.unique(slice).astype(int), np.array([0,2]))
-#             print(remaining_values)
-#             tmp=img_data[:, ii, :]
-#             for t in remaining_values:
-#                 tmp[tmp==t]=2
-#     index=None
-#     for i in range(0,img.shape[1]):
-#         slice=img_data[:,i,:]
-#         if set(np.unique(slice).astype(int)) == {0,2}:
-#             print(i)
-#             index=i
-#             print(np.unique(slice).astype(int))
-#             break
-#     for ii in range(index,0,-1):
-#         slice = img_data[:, ii, :]
-#         if 2 in np.unique(slice).astype(int) :
-#             remaining_values = np.setdiff1d(np.unique(slice).astype(int), np.array([0,2]))
-#             print(remaining_values)
-#             tmp=img_data[:, ii, :]
-#             for t in remaining_values:
-#                 tmp[tmp==t]=2
-#     index = None
-#     for i in range(0, img.shape[1]):
-#         slice = img_data[:, i, :]
-#         if set(np.unique(slice).astype(int)) == {0, 2}:
-#             print(i)
-#             index = i
-#             print(np.unique(slice).astype(int))
-#             break
-#     count = 0
-#     for ii in range(index - 1, 0, -1):
-#         slice_origin = np.rot90(img_data[:, ii, :].copy()).copy()
-#         slice = slice_origin.copy()
-#         slice[slice > 0] = 100
-#         slice = touint8(slice)
-#         w = get_maskBywatershed(slice)
-#         for i in np.unique(w):
-#             area = w[w == i]
-#             if len(area) < 300:
-#                 w[w == i] = 1
-#         # plot_show(slice[:, :], w, True)
-#         c_list = []
-#         for iii in np.unique(w):
-#             if iii != 1:
-#                 w_ = w.copy()
-#                 w_[w != iii] = 0
-#                 sx, sy = centerxy_img(w_ * 35)
-#                 if not (sx == 0 and sy == 0):
-#                     c_list.append((sx, sy))
-#         if len(c_list) == 3:
-#             max_y_point = max(c_list, key=lambda point: point[1])
-#             w[w != w[max_y_point[1], max_y_point[0]]] = 0
-#             w[w > 0] = 1
-#             slice_ = slice * w
-#             slice_[slice_ > 0] = 88
-#             img_data[:, ii, :] = np.rot90(slice_origin - slice_origin * w + slice_, 3).copy()
-#         else:
-#             count = count + 1
-#         if count > 10:
-#             break
-#
-#     img[:, :, :] = img_data
-#     img.to_file(fluor_CONFIG['output_dir']+'/blockface/atlas/segmentation_edit_inOriginB_.nii.gz')

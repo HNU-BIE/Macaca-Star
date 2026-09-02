@@ -118,19 +118,41 @@ def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[]):
     return net
 
 
-def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, init_type='normal', init_gain=0.02, gpu_ids=[]):
+def define_G(input_nc, output_nc, ngf, norm='batch', use_dropout=False, init_type='normal', init_gain=0.02, gpu_ids=[]):
+    """
+    Instantiate, configure, and initialize the 2D generator network (WTResnetGenerator2D_HybridMamba).
+    """
+    # Retrieve the normalization layer constructor based on the specified norm type
     norm_layer = get_norm_layer(norm_type=norm)
+
+    # Instantiate the 2D Wavelet-Enhanced ResNet Generator with Hybrid Mamba Bottleneck
     net = WTResnetGenerator2D_HybridMamba(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout,wavelet_name='haar')
+
+    # Initialize network weights and distribute across specified GPU device(s)
     return init_net(net, init_type, init_gain, gpu_ids)
 
 
-def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', init_type='normal', init_gain=0.02, gpu_ids=[]):
+def define_D(input_nc, ndf, n_layers_D=3, norm='batch', init_type='normal', init_gain=0.02, gpu_ids=[]):
+    """
+    Instantiate, configure, and initialize the 2D PatchGAN discriminator network (NWTLayerDiscriminator).
+    """
+    # Retrieve the normalization layer constructor based on the specified norm type
     norm_layer = get_norm_layer(norm_type=norm)
+
+    # Instantiate the 2D Wavelet-Enhanced PatchGAN Discriminator
     net = NWTLayerDiscriminator(input_nc, ndf, n_layers_D, norm_layer=norm_layer)
+
+    # Initialize network weights and distribute across specified GPU device(s)
     return init_net(net, init_type, init_gain, gpu_ids)
 
 def define_WTD(input_nc, ndf, init_type='normal', init_gain=0.02, gpu_ids=[]):
+    """
+    Instantiate, configure, and initialize the 2D Wavelet Texture Discriminator network (WaveletTextureDiscriminator2D).
+    """
+    # Instantiate the 2D Wavelet Texture Discriminator
     net = WaveletTextureDiscriminator2D(input_nc, ndf)
+
+    # Initialize network weights and distribute across specified GPU device(s)
     return init_net(net, init_type, init_gain, gpu_ids)
 
 
@@ -252,54 +274,6 @@ def cal_gradient_penalty(netD, real_data, fake_data, device, type='mixed', const
         return gradient_penalty, gradients
     else:
         return 0.0, None
-
-class NLayerDiscriminator(nn.Module):
-    """Defines a PatchGAN discriminator"""
-
-    def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d):
-        """Construct a PatchGAN discriminator
-
-        Parameters:
-            input_nc (int)  -- the number of channels in input images
-            ndf (int)       -- the number of filters in the last conv layer
-            n_layers (int)  -- the number of conv layers in the discriminator
-            norm_layer      -- normalization layer
-        """
-        super(NLayerDiscriminator, self).__init__()
-        if type(norm_layer) == functools.partial:  # no need to use bias as BatchNorm2d has affine parameters
-            use_bias = norm_layer.func == nn.InstanceNorm2d
-        else:
-            use_bias = norm_layer == nn.InstanceNorm2d
-
-        kw = 4
-        padw = 1
-        sequence = [nn.Conv2d(input_nc, ndf, kernel_size=kw, stride=2, padding=padw), nn.LeakyReLU(0.2, True)]
-        nf_mult = 1
-        nf_mult_prev = 1
-        for n in range(1, n_layers):  # gradually increase the number of filters
-            nf_mult_prev = nf_mult
-            nf_mult = min(2 ** n, 8)
-            sequence += [
-                nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=2, padding=padw, bias=use_bias),
-                norm_layer(ndf * nf_mult),
-                nn.LeakyReLU(0.2, True)
-            ]
-
-        nf_mult_prev = nf_mult
-        nf_mult = min(2 ** n_layers, 8)
-        sequence += [
-            nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=1, padding=padw, bias=use_bias),
-            norm_layer(ndf * nf_mult),
-            nn.LeakyReLU(0.2, True)
-        ]
-
-        sequence += [nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]  # output 1 channel prediction map
-        self.model = nn.Sequential(*sequence)
-
-    def forward(self, input):
-        """Standard forward."""
-        return self.model(input)
-
 
 class WaveletMapper(nn.Module):
     """
@@ -504,14 +478,40 @@ class VisionMambaBlock2D(nn.Module):
 
 
 class WTResnetGenerator2D_HybridMamba(nn.Module):
+    """
+    2D Wavelet-Transform ResNet Generator with Hybrid Vision Mamba Bottleneck.
+
+    Architecture Overview:
+      1. Initial Convolutional Head: Feature extraction using large-kernel (7x7) 2D convolution.
+      2. Multi-Level 2D Wavelet Downsampling:
+         - Decomposes spatial features into low-frequency (LL) and high-frequency (LH, HL, HH) subbands using 2D DWT.
+         - Enhances high-frequency texture details via 2D WaveletMapper while downsampling low-frequency features.
+      3. Hybrid 2D Mamba Bottleneck:
+         - Stage 1: Local feature extraction via 2D ResNet blocks.
+         - Stage 2: Global long-range spatial dependency modeling via 2D Vision Mamba (SSM) blocks.
+         - Stage 3: Feature refinement via 2D ResNet blocks.
+      4. Multi-Level Wavelet Upsampling & Reconstruction:
+         - Upsamples feature maps and reconstructs multi-scale representations using 2D Inverse Wavelet Transform (IWT).
+      5. Output Head: Large-kernel convolution with Tanh activation.
+    """
     def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d,
                  use_dropout=False, padding_type='reflect', wavelet_name='haar', blocks=[4, 2, 4], ismerge=False):
-
+        """
+        :param input_nc: Number of channels in input 2D images.
+        :param output_nc: Number of channels in output 2D images.
+        :param ngf: Number of generator feature filters in the first convolutional layer.
+        :param norm_layer: Normalization layer class (e.g., BatchNorm2d or InstanceNorm2d).
+        :param use_dropout: Whether to use dropout layers in residual blocks.
+        :param padding_type: Padding type for convolutional layers ('reflect', 'replicate', or 'zero').
+        :param wavelet_name: Mother wavelet family name for 2D DWT/IWT (e.g., 'haar').
+        :param blocks: List specifying block counts [ResNet, VisionMamba2D, ResNet] in the bottleneck.
+        :param ismerge: Whether to enable feature concatenation and fusion in the upsampling path.
+        """
         super(WTResnetGenerator2D_HybridMamba, self).__init__()
         self.input_nc = input_nc
         self.output_nc = output_nc
         self.ngf = ngf
-
+        # Determine bias usage based on normalization type
         if type(norm_layer) == functools.partial:
             use_bias = norm_layer.func == nn.InstanceNorm2d
         else:
@@ -520,138 +520,160 @@ class WTResnetGenerator2D_HybridMamba(nn.Module):
         self.ismerge = ismerge
         print('WTResnetGenerator2D_HybridMamba -> ismerge: ' + str(ismerge))
 
-
+        # =====================================================================
+        # 1. Initial Convolutional Head (input_nc -> ngf)
+        # =====================================================================
         self.pad1 = nn.ReplicationPad2d(3)
         self.conv1 = nn.Conv2d(input_nc, ngf, 7, bias=use_bias, padding=0)
         self.norm1 = norm_layer(ngf)
 
-
-        # level-1 64→128
+        # =====================================================================
+        # 2. Level-1 Downsampling & 2D Wavelet Decomposition (ngf -> ngf * 2)
+        # =====================================================================
         self.wt_p1 = WaveletMapper(ngf)
         wt_f2, iwt_f2 = wavelet.create_2d_wavelet_filter(wavelet_name, ngf, ngf, torch.float)
         wt_f2 = nn.Parameter(wt_f2, requires_grad=False)
         iwt_f2 = nn.Parameter(iwt_f2, requires_grad=False)
         self.register_buffer('wt_f2', wt_f2)
         self.register_buffer('iwt_f2', iwt_f2)
-
-
-        self.conv_wt = nn.ConvTranspose2d(ngf * 1, ngf * 1, kernel_size=3, stride=2, output_padding=1, padding=1,
-                                          bias=use_bias)
+        self.conv_wt = nn.ConvTranspose2d(ngf * 1, ngf * 1, kernel_size=3, stride=2, output_padding=1, padding=1,bias=use_bias)
         self.norm_wt = norm_layer(ngf * 1)
-
         self.conv2 = nn.Conv2d(ngf * 1, ngf * 2, 3, stride=2, padding=1, bias=use_bias)
         self.norm2 = norm_layer(ngf * 2)
 
-        # level-2 128→256
+        # =====================================================================
+        # 3. Level-2 Downsampling & 2D Wavelet Decomposition (ngf * 2 -> ngf * 4)
+        # =====================================================================
         self.wt_p2 = WaveletMapper(ngf * 2)
         wt_f, iwt_f = wavelet.create_2d_wavelet_filter(wavelet_name, ngf * 2, ngf * 2, torch.float)
         wt_f = nn.Parameter(wt_f, requires_grad=False)
         iwt_f = nn.Parameter(iwt_f, requires_grad=False)
         self.register_buffer('wt_f3', wt_f)
         self.register_buffer('iwt_f3', iwt_f)
-
-        self.conv_wt2 = nn.ConvTranspose2d(ngf * 2, ngf * 2, kernel_size=3, stride=2, output_padding=1, padding=1,
-                                           bias=use_bias)
+        self.conv_wt2 = nn.ConvTranspose2d(ngf * 2, ngf * 2, kernel_size=3, stride=2, output_padding=1, padding=1,bias=use_bias)
         self.norm_wt2 = norm_layer(ngf * 2)
-
         self.conv3 = nn.Conv2d(ngf * 2, ngf * 4, 3, stride=2, padding=1, bias=use_bias)
         self.norm3 = norm_layer(ngf * 4)
 
-
+        # =====================================================================
+        # 4. Hybrid Bottleneck (ResNet -> Vision Mamba 2D -> ResNet)
+        # =====================================================================
         self.bottleneck_blocks = nn.ModuleList()
 
-
+        # Initial ResNet residual blocks
         for _ in range(blocks[0]):
             self.bottleneck_blocks.append(
                 ResnetBlock(ngf * 4, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout,
                             use_bias=use_bias)
             )
 
-
+        # 2D Vision Mamba blocks for global spatial state-space modeling
         for _ in range(blocks[1]):
             self.bottleneck_blocks.append(VisionMambaBlock2D(d_model=ngf * 4))
 
-
+        # Subsequent ResNet residual blocks
         for _ in range(blocks[2]):
             self.bottleneck_blocks.append(
                 ResnetBlock(ngf * 4, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout,
                             use_bias=use_bias)
             )
 
-
+        # =====================================================================
+        # 5. Level-2 Upsampling & 2D Inverse Wavelet Reconstruction (ngf * 4 -> ngf * 2)
+        # =====================================================================
         self.up1 = nn.ConvTranspose2d(ngf * 4, ngf * 2, 3, stride=2, output_padding=1, padding=1, bias=use_bias)
         self.norm_up1 = norm_layer(ngf * 2)
-
         self.conv_iwt2 = nn.Conv2d(ngf * 2, ngf * 2, kernel_size=3, stride=2, padding=1, bias=use_bias)
         self.norm_iwt2 = norm_layer(ngf * 2)
 
+        # =====================================================================
+        # 6. Level-1 Upsampling & 2D Inverse Wavelet Reconstruction (ngf * 2 -> ngf * 1)
+        # =====================================================================
         self.up2 = nn.ConvTranspose2d(ngf * 2, ngf * 1, 3, stride=2, output_padding=1, padding=1, bias=use_bias)
         self.norm_up2 = norm_layer(ngf * 1)
 
         self.conv_iwt = nn.Conv2d(ngf * 1, ngf * 1, kernel_size=3, stride=2, padding=1, bias=use_bias)
         self.norm_iwt = norm_layer(ngf * 1)
 
-        self.iwt_up = nn.ConvTranspose2d(ngf * 1, ngf * 1, kernel_size=3, stride=2, output_padding=1, padding=1,
-                                         bias=use_bias)
+        # Optional multi-scale feature merging layers
+        self.iwt_up = nn.ConvTranspose2d(ngf * 1, ngf * 1, kernel_size=3, stride=2, output_padding=1, padding=1,bias=use_bias)
         self.iwt_up_norm = norm_layer(ngf)
 
         self.conv_cat = nn.Conv2d(ngf * 2, ngf * 1, 3, stride=1, padding=1, bias=use_bias)
         self.conv_cat_norm = norm_layer(ngf)
 
-
+        # =====================================================================
+        # 7. Output Convolutional Head (ngf -> output_nc)
+        # =====================================================================
         self.pad2 = nn.ReplicationPad2d(3)
         self.conv_out = nn.Conv2d(ngf, output_nc, 7)
         self.tanh = nn.Tanh()
 
     def forward(self, x):
+        """
+        Forward pass of the 2D Wavelet-Hybrid Mamba generator.
+
+        :param x: Input 2D tensor of shape [B, input_nc, H, W].
+        :return: Synthesized 2D tensor of shape [B, output_nc, H, W] normalized to [-1, 1].
+        """
+        # ---------- Step 1: Initial Convolutional Head ----------
         x = self.pad1(x)
         x = self.conv1(x)
         x = self.norm1(x)
         x = F.silu(x, inplace=True)
-
         coeff_list = []
 
+        # ---------- Step 2: Level-1 2D Wavelet Decomposition & Downsampling ----------
         curr_x = wavelet.wavelet_2d_transform(x, self.wt_f2)
 
+        # Extract and map high-frequency wavelet subbands: [B, C, 3, H', W']
         hh = self.wt_p1(curr_x[:, :, 1:, :, :])
         coeff_list.append(hh)
 
+        # Propagate low-frequency subband (LL) through convolution
         x = curr_x[:, :, 0, :, :]
         x = self.conv2(x)
         x = self.norm2(x)
         x = F.silu(x, inplace=True)
 
+        # ---------- Step 3: Level-2 2D Wavelet Decomposition & Downsampling ----------
         curr_x = wavelet.wavelet_2d_transform(x, self.wt_f3)
+
+        # Extract and map level-2 high-frequency wavelet subbands
         hh = self.wt_p2(curr_x[:, :, 1:, :, :])
         coeff_list.append(hh)
 
+        # Propagate low-frequency subband (LL) to bottleneck
         x = curr_x[:, :, 0, :, :]
         x = self.conv3(x)
         x = self.norm3(x)
         x = F.silu(x, inplace=True)
 
-        # ---------- 🌟 Hybrid Mamba Bottleneck ----------
+        # ---------- Step 4: Hybrid Bottleneck Processing ----------
         for blk in self.bottleneck_blocks:
             x = blk(x)
 
-
+        # ---------- Step 5: Level-2 Upsampling & Inverse Wavelet Reconstruction ----------
         x = self.up1(x)
         x = self.norm_up1(x)
         x = F.silu(x, inplace=True)
 
+        # Recombine low-frequency feature map with cached high-frequency coefficients
         coeff = coeff_list.pop()
-
         ll_4 = torch.cat([x.unsqueeze(2), coeff], dim=2)
         x = wavelet.inverse_wavelet_2d_transform(ll_4, self.iwt_f3)
 
+        # ---------- Step 6: Level-1 Upsampling & Inverse Wavelet Reconstruction ----------
         x = self.up2(x)
         x = self.norm_up2(x)
         x = F.silu(x, inplace=True)
 
+        # Recombine with level-1 high-frequency coefficients
         coeff = coeff_list.pop()
         ll_4 = torch.cat([x.unsqueeze(2), coeff], dim=2)
         x_iwt = wavelet.inverse_wavelet_2d_transform(ll_4, self.iwt_f2)
 
+        # Optional: Feature fusion branch
         if self.ismerge:
             x_up = self.iwt_up(x)
             x_up = self.iwt_up_norm(x_up)
@@ -663,7 +685,7 @@ class WTResnetGenerator2D_HybridMamba(nn.Module):
         else:
             x = x_iwt
 
-
+        # ---------- Step 7: Output Projection ----------
         x = self.pad2(x)
         x = self.conv_out(x)
         x = self.tanh(x)
@@ -732,42 +754,69 @@ class ResnetBlock(nn.Module):
 
 
 class NWTLayerDiscriminator(nn.Module):
-    """Defines a PatchGAN discriminator"""
+    """
+    2D Wavelet-Enhanced PatchGAN (Layer) Discriminator.
+
+    Architecture Overview:
+      - 2D Patch-Level Local Realism Evaluation: Evaluates local image realism over overlapping 2D spatial patches.
+      - Strided Downsampling: Progressively reduces spatial resolution while expanding feature channels.
+      - 2D Wavelet Convolution (WTConv2d_D): Injects multi-scale frequency analysis into intermediate
+        discriminator layers to enhance edge, boundary, and high-frequency texture discrimination.
+      - Output: 1-channel 2D PatchGAN prediction map.
+    """
 
     def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d):
-        """Construct a PatchGAN discriminator
-
-        Parameters:
-            input_nc (int)  -- the number of channels in input images
-            ndf (int)       -- the number of filters in the last conv layer
-            n_layers (int)  -- the number of conv layers in the discriminator
-            norm_layer      -- normalization layer
+        """
+        :param input_nc: Number of channels in the input 2D image (e.g., 1 or 3).
+        :param ndf: Number of discriminator feature filters in the first convolutional layer.
+        :param n_layers: Number of intermediate downsampling layers in the discriminator.
+        :param norm_layer: Normalization layer class (e.g., BatchNorm2d or InstanceNorm2d).
         """
         super(NWTLayerDiscriminator, self).__init__()
-        if type(norm_layer) == functools.partial:  # no need to use bias as BatchNorm2d has affine parameters
+
+        # Determine bias usage based on normalization type (InstanceNorm does not use affine bias)
+        if type(norm_layer) == functools.partial:
             use_bias = norm_layer.func == nn.InstanceNorm2d
         else:
             use_bias = norm_layer == nn.InstanceNorm2d
 
         kw = 4
         padw = 1
+
+        # =====================================================================
+        # 1. Initial Downsampling Layer (input_nc -> ndf, no normalization)
+        # =====================================================================
         sequence = [nn.Conv2d(input_nc, ndf, kernel_size=kw, stride=2, padding=padw), nn.LeakyReLU(0.2, True)]
         nf_mult = 1
         nf_mult_prev = 1
+
+        # =====================================================================
+        # 2. Intermediate Downsampling & Wavelet Convolution Layers
+        # =====================================================================
         for n in range(1, n_layers):  # gradually increase the number of filters
             nf_mult_prev = nf_mult
             nf_mult = min(2 ** n, 8)
             sequence += [
+                # Standard strided 2D convolution downsampling
                 nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=2, padding=padw, bias=use_bias),
                 norm_layer(ndf * nf_mult),
                 nn.LeakyReLU(0.2, True),
+
+                # 2D Wavelet Convolution for multi-scale frequency-aware feature extraction
                 WTConv2d_D(ndf * nf_mult, ndf * nf_mult, kernel_size=kw, stride=1),
                 norm_layer(ndf * nf_mult),
                 nn.LeakyReLU(0.2, True)
             ]
 
+        # =====================================================================
+        # 3. Penultimate Convolutional Layer (stride = 1)
+        # =====================================================================
         nf_mult_prev = nf_mult
         nf_mult = min(2 ** n_layers, 8)
+
+        # =====================================================================
+        # 4. Final Prediction Output Layer (1-channel PatchGAN score map)
+        # =====================================================================
         sequence += [
             nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=1, padding=padw, bias=use_bias),
             norm_layer(ndf * nf_mult),
@@ -778,69 +827,108 @@ class NWTLayerDiscriminator(nn.Module):
         self.model = nn.Sequential(*sequence)
 
     def forward(self, input):
-        """Standard forward."""
+        """
+        Forward pass of the 2D Wavelet PatchGAN discriminator.
+
+        :param input: Input 2D tensor of shape [B, input_nc, H, W].
+        :return: 2D PatchGAN prediction map of shape [B, 1, H', W'].
+        """
         return self.model(input)
 
 
 class WaveletTextureDiscriminator2D(nn.Module):
     """
-    WT-based 2D frequency discriminator.
+    2D Wavelet-based Dual-Stream Texture and Frequency Discriminator.
 
-    Input:
-        [B, C, H, W]
+    Architecture Overview:
+      - 2D Discrete Wavelet Transform (DWT): Decomposes input 2D images into 4 subbands:
+        1 approximation low-frequency subband (LL) and 3 high-frequency detail subbands (LH, HL, HH).
+      - Dual-Branch Frequency Processing:
+        1. High-Frequency Branch (hf_net): Captures edge sharpness, high-frequency textural details,
+           and gradient magnitudes (using raw subband values + absolute energy responses with dilated convolutions).
+        2. Low-Frequency Branch (ll_net): Captures macro-structural layout and global intensity distribution.
+      - Spectral Normalization: Applied to all 2D convolutional layers to stabilize adversarial training dynamics.
+      - Weighted Feature Fusion: Fuses high-frequency and scaled low-frequency representations (via ll_weight).
 
-    Wavelet output:
-        [B, C, 4, H, W] (1 LL subband + 3 High-frequency subbands)
+    Input Shape:
+      [B, C, H, W]
     """
 
     def __init__(self, input_nc, ndf=32, wavelet_name='haar', ll_weight=0.05):
+        """
+        :param input_nc: Number of channels in the input 2D image (e.g., 1 or 3).
+        :param ndf: Base channel filter count for the high-frequency discriminator network.
+        :param wavelet_name: Mother wavelet family name for 2D DWT (e.g., 'haar').
+        :param ll_weight: Weight multiplier applied to low-frequency features during feature fusion.
+        """
         super().__init__()
         self.ll_weight = ll_weight
 
-
+        # 1. Create and register 2D Discrete Wavelet Transform filter buffers
         wt_filter, _ = wavelet.create_2d_wavelet_filter(wavelet_name, input_nc, input_nc, torch.float)
         self.register_buffer('wt_filter', wt_filter)
 
-
+        # 6 channels = 3 high-frequency subbands x 2 (raw subband values + absolute magnitudes)
         hf_input_channels = input_nc * 6
         ll_channels = max(ndf // 4, 8)
 
-
+        # =====================================================================
+        # 2. High-Frequency Stream (Texture & Detail Discrimination)
+        # =====================================================================
         self.hf_net = nn.Sequential(
+            # Stage 1: Initial feature extraction
             spectral_norm(nn.Conv2d(hf_input_channels, ndf, kernel_size=3, stride=1, padding=1)),
             nn.LeakyReLU(0.2, inplace=True),
+
+            # Stage 2: Downsampling convolution
             spectral_norm(nn.Conv2d(ndf, ndf * 2, kernel_size=3, stride=2, padding=1)),
             nn.LeakyReLU(0.2, inplace=True),
+
+            # Stage 3: Dilated convolution (dilation=2) to expand receptive field for texture context
             spectral_norm(nn.Conv2d(ndf * 2, ndf * 2, kernel_size=3, stride=1, padding=2, dilation=2)),
             nn.LeakyReLU(0.2, inplace=True)
         )
 
+        # =====================================================================
+        # 3. Low-Frequency Stream (Global Structural Discrimination)
+        # =====================================================================
         self.ll_net = nn.Sequential(
             spectral_norm(nn.Conv2d(input_nc, ll_channels, kernel_size=3, stride=2, padding=1)),
             nn.LeakyReLU(0.2, inplace=True)
         )
 
+        # =====================================================================
+        # 4. Final Prediction Projection Head
+        # =====================================================================
         self.out_conv = spectral_norm(nn.Conv2d(ndf * 2 + ll_channels, 1, kernel_size=3, stride=1, padding=1))
 
     def forward(self, x, return_components=False):
+        """
+        Forward pass for 2D dual-stream frequency-aware discrimination.
 
+        :param x: Input 2D image tensor of shape [B, C, H, W].
+        :param return_components: Whether to return intermediate high/low-frequency feature maps.
+        :return: 2D PatchGAN realism score map [B, 1, H', W'], or (pred, hf_feat, ll_feat).
+        """
+        # 1. 2D Wavelet decomposition: [B, C, H, W] -> [B, C, 4, H', W']
         wt = wavelet.wavelet_2d_transform(x, self.wt_filter)
-
-
         B, C, _, H, W = wt.shape
 
-
+        # 2. Separate low-frequency (LL) and high-frequency (LH, HL, HH) subbands
         low_freq = wt[:, :, 0, :, :]
         high_freq = wt[:, :, 1:, :, :].contiguous().reshape(B, C * 3, H, W)
 
-
+        # Concatenate raw high-frequency coefficients with their absolute magnitudes (energy response)
         high_freq_feature = torch.cat([high_freq, high_freq.abs()], dim=1)
 
+        # 3. Extract features through dual frequency streams
         hf_feat = self.hf_net(high_freq_feature)
         ll_feat = self.ll_net(low_freq)
 
-
+        # 4. Fuse high-frequency and low-frequency representations
         feat = torch.cat([hf_feat, self.ll_weight * ll_feat], dim=1)
+
+        # 5. Compute final discrimination score map
         pred = self.out_conv(feat)
 
         if return_components:

@@ -465,12 +465,9 @@ def atlas_reg_ByT1w():
     atlas_level=6    # Hierarchical parcellation level for CHARM (cortical) and SARM (subcortical) atlases
 
     # Ensure required output subdirectories exist (atlas/ and xfms/)
-    if not os.path.exists(fMOST_PI_CONFIG['output_dir']+'/reg/'+method):
-        os.mkdir(fMOST_PI_CONFIG['output_dir']+'/reg/'+method)
-    if not os.path.exists(fMOST_PI_CONFIG['output_dir']+'/reg/'+method+'/atlas/'):
-        os.mkdir(fMOST_PI_CONFIG['output_dir']+'/reg/'+method+'/atlas/')
-    if not os.path.exists(fMOST_PI_CONFIG['output_dir']+'/reg/'+method+'/xfms/'):
-        os.mkdir(fMOST_PI_CONFIG['output_dir']+'/reg/'+method+'/xfms/')
+    base_reg_dir = os.path.join(fMOST_PI_CONFIG['output_dir'], 'reg', method)
+    os.makedirs(os.path.join(base_reg_dir, 'atlas'), exist_ok=True)
+    os.makedirs(os.path.join(base_reg_dir, 'xfms'), exist_ok=True)
 
     # Load subject-specific in vivo MRI, synthetic T1-like PI, and PI volumes
     t1 = ants.image_read(fMOST_PI_CONFIG['output_dir'] + '/MRI/MRI_brain_bc_dn_.nii.gz')

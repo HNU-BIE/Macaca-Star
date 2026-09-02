@@ -46,7 +46,6 @@ def atlas_reg_ByT1w():
 
     # 1. Ensure required output directories exist (atlas/ and xfms/)
     output_reg_dir = os.path.join(fluor_CONFIG['output_dir'], 'reg3D', method)
-    os.makedirs(output_reg_dir, exist_ok=True)
     os.makedirs(os.path.join(output_reg_dir, 'atlas'), exist_ok=True)
     os.makedirs(os.path.join(output_reg_dir, 'xfms'), exist_ok=True)
 
@@ -212,7 +211,6 @@ def atlas_reg_noT1w():
 
     # Ensure required output directories exist (atlas/ and xfms/)
     output_reg_dir = os.path.join(fluor_CONFIG['output_dir'], 'reg3D', method)
-    os.makedirs(output_reg_dir, exist_ok=True)
     os.makedirs(os.path.join(output_reg_dir, 'atlas'), exist_ok=True)
     os.makedirs(os.path.join(output_reg_dir, 'xfms'), exist_ok=True)
 

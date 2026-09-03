@@ -238,7 +238,7 @@ def PI_to_T1_cyclegan():
 
     # Set checkpoint path, experiment name, and test settings
     opt.checkpoints_dir = os.getcwd() + '/checkpoints'
-    opt.name = 'fMOSTPI2NMT'
+    opt.name = 'fMOSTPI2MRI'
     opt.phase = 'test'
     opt.model = 'test'
 

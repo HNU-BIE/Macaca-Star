@@ -1,1 +1,2 @@
 subject_dir: 'example/fluor_sections/blockface.nii.gz'  # Path to the input blockface image volume (.nii.gz)
+clahe: False

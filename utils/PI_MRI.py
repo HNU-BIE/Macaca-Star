@@ -27,6 +27,6 @@ def PI_preproc():
     # clahe_image()                # Step 7: Apply Contrast Limited Adaptive Histogram Equalization (CLAHE)
     # PI_alignNMT()                # Step 8: Perform initial rigid/affine spatial alignment from PI to NMT atlas space
     PI_to_T1_cyclegan()          # Step 9: Synthesize T1-like volume from PI using 3D CycWaveMamba model
-    correct_T1like()             # Step 10: Mask the synthesized T1-like volume to remove non-brain background
-    fMOST_PI_3Dreg()             # Step 11: 3D non-linear registration (MRI-guided via in vivo MRI or MRI-free to NMT)
+    # correct_T1like()             # Step 10: Mask the synthesized T1-like volume to remove non-brain background
+    # fMOST_PI_3Dreg()             # Step 11: 3D non-linear registration (MRI-guided via in vivo MRI or MRI-free to NMT)
     # upsample_toOrigin()          # Step 12: Upsample atlas back to the original full-resolution space
